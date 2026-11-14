@@ -285,7 +285,7 @@ const ADMINS = ["David"]; // creador de la app: todo lo de un socio, sin que le 
 const ENCARGADAS = ["Zulay"]; // vende, cobra todo y abre caja; sin cierre, historial ni inventario
 const APOYOS = ["Apoyo 2","Apoyo 3"];
 const DEMOS = ["Demo socio","Demo mesera"];
-const ENV = "pruebas", FEAT_BARCODE = true;
+const ENV = "pruebas", FEAT_BARCODE = true, FEAT_COTIZ = true;
 const LS_ME = ENV === "pruebas" ? "lm_me_pruebas" : "lm_me";
 let ME = null;
 try { const m = localStorage.getItem(LS_ME); if (m && (SOCIOS.includes(m) || ADMINS.includes(m) || ENCARGADAS.includes(m) || APOYOS.includes(m) || DEMOS.includes(m))) ME = m; } catch (e) {}
@@ -527,6 +527,7 @@ function renderCierre() {
     }).join("")}</div>`;
   }
   h += impresoraBox() + accesosBox();
+  h += `<div class="box"><h3>Respaldo</h3><div class="muted small" style="padding:6px 0 10px">Descarga TODA la información (ventas, inventario, movimientos, catálogo, cajas) en un archivo de respaldo y una copia en Excel. Guárdalos en un lugar seguro.</div><button class="btn block" data-act="backup" style="margin-bottom:10px">Descargar respaldo completo</button></div>`;
   h += `<div class="box"><h3>Contraseñas</h3>${SOCIOS.concat(ADMINS, ENCARGADAS).map(s => `<div class="li"><div class="a"><b>${esc(s)}</b><span class="muted small">${pins[s] ? "Con contraseña" : "Sin contraseña todavía"}</span></div>${s === ME ? `<button class="linkbtn" data-act="mypin">Cambiar la mía</button>` : pins[s] ? `<button class="linkbtn" data-act="resetpin" data-id="${esc(s)}">Restablecer</button>` : ""}</div>`).join("")}</div>`;
   $("#cierre").innerHTML = h;
 }
@@ -593,7 +594,7 @@ function renderTurno() {
   document.querySelector('[data-nav="cierre"]').style.display = soc ? "" : "none";
   document.querySelector('[data-nav="inventario"]').style.display = soc ? "" : "none";
   document.querySelector('[data-nav="historial"]').style.display = soc ? "" : "none";
-  document.querySelector('[data-nav="cotizar"]').style.display = soc ? "" : "none";
+  document.querySelector('[data-nav="cotizar"]').style.display = soc && FEAT_COTIZ ? "" : "none";
   document.querySelector('[data-nav="mios"]').style.display = ME && !soc ? "" : "none";
 }
 
@@ -909,7 +910,7 @@ function editProduct(id, presetCode) {
     <div class="field" id="ep_abcw"><label id="ep_abcl">Código del ${esc(a.l || "sixpack")}</label><input id="ep_abc" data-scan="raw" inputmode="numeric" autocomplete="off" placeholder="Opcional" value="${esc((a.bc || []).join(", "))}"></div></div>` : ""}
     ${isNew ? `<div class="row"><div class="field"><label>Existencias iniciales</label><input id="ep_q" inputmode="numeric" placeholder="0"></div>
     <div class="field"><label>Avisarme cuando queden</label><input id="ep_min" inputmode="numeric" placeholder="Ej: 6"></div></div>` : ""}
-    <div class="row"><div class="field"><label>Venta mínima al por mayor</label><input id="ep_mm" inputmode="numeric" value="${p.mmin != null ? p.mmin : ""}" placeholder="Automático: ${id ? minMayorAuto(p) || "sin mayorista" : "según el tipo"}"></div><div class="field"><label>Precio mayorista (−${Math.round(DESC_MAYOR * 100)}%)</label><input id="ep_pmx" disabled value=""></div></div>
+    ${FEAT_COTIZ ? "" : "<!--"}<div class="row"><div class="field"><label>Venta mínima al por mayor</label><input id="ep_mm" inputmode="numeric" value="${p.mmin != null ? p.mmin : ""}" placeholder="Automático: ${id ? minMayorAuto(p) || "sin mayorista" : "según el tipo"}"></div><div class="field"><label>Precio mayorista (−${Math.round(DESC_MAYOR * 100)}%)</label><input id="ep_pmx" disabled value=""></div></div>${FEAT_COTIZ ? "" : "-->"}
     <div class="note" id="ep_info" style="font-size:12.5px;line-height:1.5"></div>
     <div class="small" id="ep_err" style="color:#ff8a8a;min-height:16px;font-weight:600"></div>
     <div class="row" style="margin-top:8px">${id ? `<button class="btn danger" data-act="delp" data-id="${p.id}">Eliminar</button>` : `<button class="btn" data-act="close">Cancelar</button>`}<button class="btn pri" data-act="savep" data-id="${p.id}">${isNew ? "Crear producto" : "Guardar"}</button></div>`);
@@ -944,7 +945,7 @@ function editProduct(id, presetCode) {
     $("#ep_info").innerHTML = r.map(x => "• " + x).join("<br>");
     if ($("#ep_pmx")) { const pmx = { n: $("#ep_n").value, cat, sub: pm.sub, p: v, mmin: $("#ep_mm").value.trim() === "" ? null : digits($("#ep_mm").value) }; const mm = minMayor(pmx); $("#ep_pmx").value = v && mm ? fmt(precioMayor(pmx)) + " desde " + mm + " und." : "Sin precio mayorista"; }
   };
-  ["ep_c", "ep_p", "ep_cat", "ep_sub", "ep_mm", "ep_n"].forEach(i => $("#" + i).addEventListener("input", upd));
+  ["ep_c", "ep_p", "ep_cat", "ep_sub", "ep_mm", "ep_n"].forEach(i => { const x = $("#" + i); if (x) x.addEventListener("input", upd); });
   $("#ep_n").addEventListener("input", () => { $("#ep_err").textContent = ""; });
   $("#sheet").addEventListener("click", e => { if (e.target.closest('[data-act="ep40"]')) { priceTouched = false; altTouched = false; upd(); priceTouched = true; altTouched = true; } });
   upd();
@@ -973,7 +974,7 @@ async function saveProduct(id) {
   } else if (old && old.bc) d.bc = old.bc;
   if (cat === "Licor") d.sub = $("#ep_sub").value;
   if (old && old.ml) d.ml = old.ml;
-  { const mm = $("#ep_mm") ? $("#ep_mm").value.trim() : ""; if (mm !== "") d.mmin = digits(mm); }
+  if ($("#ep_mm")) { const mm = $("#ep_mm").value.trim(); if (mm !== "") d.mmin = digits(mm); } else if (old && old.mmin != null) d.mmin = old.mmin;
   if (cat === "Cigarrería" && !d.ml) d.ml = "Media";
   if (d.sub === "Cervezas") {
     const sp = digits($("#ep_ap").value) || priceFor(c * 6, MARGEN.sixpack);
@@ -1373,7 +1374,7 @@ async function invProduct(pid) {
         <div class="kpi"><div class="kl">Existencias</div><div class="kv num">${s.q != null ? fq(s.q) : "—"}</div><div class="ks">${s.q != null ? invUnit(p) : "Sin conteo"}</div></div>
         <div class="kpi"><div class="kl">Vende por semana</div><div class="kv num">${rot[pid] ? fq(r2(rot[pid] * 7)) : "0"}</div><div class="ks">${s.days != null ? `Alcanza ~${Math.max(0, Math.round(s.days))} días` : "Sin datos de ventas"}</div></div></div>
       ${marginRows(p).map(r => `<div class="li"><div class="a"><span class="muted small">${esc(r.l)} · costo ${fmt(r.cost)}</span><b class="num">${fmt(r.cur)} · margen ${pct(r.m)}${r.low ? ` <span class="tag v">META ${pct(r.t)}</span>` : ""}</b></div>${r.low ? `<button class="linkbtn" data-act="applysug" data-id="${pid}|${r.which}">Subir a ${fmt(r.sug)}</button>` : ""}</div>`).join("")}
-      <div class="li"><div class="a"><span class="muted small">Precio mayorista</span><b class="num">${minMayor(p) ? `${fmt(precioMayor(p))} · desde ${minMayor(p)} und.` : "Sin precio mayorista"}</b></div><button class="linkbtn" data-act="editp" data-id="${pid}">Cambiar mínimo</button></div>
+      ${FEAT_COTIZ ? "" : "<!--"}<div class="li"><div class="a"><span class="muted small">Precio mayorista</span><b class="num">${minMayor(p) ? `${fmt(precioMayor(p))} · desde ${minMayor(p)} und.` : "Sin precio mayorista"}</b></div><button class="linkbtn" data-act="editp" data-id="${pid}">Cambiar mínimo</button></div>${FEAT_COTIZ ? "" : "-->"}
       <div class="li"><div class="a" style="flex:1"><span class="muted small">Avisarme cuando queden (mínimo)</span><input id="inv_min" inputmode="numeric" placeholder="Automático: menos de 7 días" value="${x.min != null ? x.min : ""}" style="margin-top:6px"></div></div>
       <div class="row" style="margin-top:12px"><button class="btn pri" data-act="entrada" data-id="${pid}">+ Entrada</button><button class="btn" data-act="ajuste" data-id="${pid}">${s.q == null ? "Hacer conteo" : "Ajustar conteo"}</button></div>
       ${FEAT_BARCODE ? `<div class="li"><div class="a"><span class="muted small">Código de barras</span><b class="num">${(p.bc || []).length ? esc(p.bc.join(", ")) : "Sin código"}${p.alt && (p.alt.bc || []).length ? `<br><span class="muted small">${esc(p.alt.l)}: ${esc(p.alt.bc.join(", "))}</span>` : ""}</b></div><button class="linkbtn" data-act="bcmodal" data-id="${pid}">Asignar</button></div>` : ""}
@@ -1783,7 +1784,7 @@ function showView(v) {
   if (v === "historial") { loadHist(); loadMeta(); }
   if (v === "cierre") loadMeta();
   if (v === "inventario") loadRot();
-  if (v === "cotizar") { if (!isSocio()) { showView("vender"); return; } watchCotiz(); }
+  if (v === "cotizar") { if (!isSocio() || !FEAT_COTIZ) { showView("vender"); return; } watchCotiz(); }
   document.querySelectorAll(".view").forEach(el => el.classList.toggle("on", el.id === "v-" + v));
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.nav === v));
   renderAll(); window.scrollTo(0, 0);
@@ -1894,6 +1895,42 @@ function impresoraBox() {
   return `<div class="box"><h3>Impresora y cajón de este equipo</h3>
     <div class="li"><div class="a"><b>${on ? "Activada en este equipo" : "Desactivada"}</b><span class="muted small">${on ? "Cada venta imprime el recibo; con efectivo se abre el cajón." : "Actívala solo en el computador del local (donde está la impresora)."}</span></div><button class="linkbtn" data-act="prntoggle">${on ? "Desactivar" : "Activar"}</button></div>
     ${on ? `<div class="row" style="padding:10px 0"><button class="btn" data-act="prntest">Probar conexión</button><button class="btn" data-act="prndrawer">Abrir cajón</button></div>` : ""}</div>`;
+}
+
+
+/* ---------- respaldo completo ---------- */
+const BACKUP_COLS = ["catalog", "config", "stock", "movs", "sales", "dias", "turnos", "tabs", "items", "cotiz"];
+async function readAll(col) {
+  if (Store.db) { const sn = await Store.db.collection(col).get(); const o = {}; for (const d of sn.docs) o[d.id] = d.data(); return o; }
+  const o = {}; for (const [id, d] of Store._c(col)) o[id] = d; return o;
+}
+async function backupAll(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Preparando respaldo…"; }
+  try {
+    const data = {}; let n = 0;
+    for (const c of BACKUP_COLS) { data[c] = await readAll(c); n += Object.keys(data[c]).length; }
+    const now = new Date(), p2 = n => String(n).padStart(2, "0"), stamp = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}_${p2(now.getHours())}-${p2(now.getMinutes())}`;
+    const json = { app: "Liquidos Market", tipo: "respaldo", version: 1, creado: now.toISOString(), por: ME, origen: FB ? "firebase" : "claude", documentos: n, data };
+    await saveBlob(new Blob([JSON.stringify(json)], { type: "application/json" }), `Liquidos-Market-RESPALDO-${stamp}.json`, `Respaldo descargado (${n} registros)`);
+    // copia legible en Excel
+    const X = await loadXLSX(), wb = X.utils.book_new();
+    const sales = Object.entries(data.sales).map(([id, s]) => Object.assign({ id }, s));
+    const { v, d } = saleRows(sales);
+    X.utils.book_append_sheet(wb, sheet(X, v, [3, 4, 5], [12, 10, 18, 12, 12, 14, 12, 12]), "Ventas");
+    X.utils.book_append_sheet(wb, sheet(X, d, [7, 8, 9], [12, 10, 18, 36, 12, 16, 9, 11, 12, 12, 12]), "Detalle ventas");
+    const cat = (data.catalog.main && data.catalog.main.products) || st.catalog;
+    const inv = [["Producto", "Pestaña", "Tipo", "Existencias", "Unidad", "Costo", "Precio venta", "Valor a costo", "Código de barras"]];
+    for (const p of cat) { const x = data.stock[p.id]; inv.push([p.n, p.cat, p.sub || "", x && x.q != null ? x.q : "", invUnit(p), p.c, p.p, x && x.q > 0 ? x.q * p.c : 0, (p.bc || []).join(", ")]); }
+    X.utils.book_append_sheet(wb, sheet(X, inv, [5, 6, 7], [36, 16, 14, 11, 8, 12, 12, 14, 18]), "Inventario");
+    const movs = Object.values(data.movs).sort((a, b) => a.ts - b.ts);
+    X.utils.book_append_sheet(wb, sheet(X, [["Fecha", "Hora", "Tipo", "Producto", "Cantidad", "Antes", "Después", "Costo", "Nota", "Quién"]].concat(movs.map(m => [m.day, hora(m.ts), m.type, m.n, m.q, m.from != null ? m.from : "", m.to != null ? m.to : "", m.c || "", m.note || "", m.by || ""])), [7], [12, 10, 10, 36, 10, 9, 9, 12, 26, 12]), "Movimientos");
+    const dias = Object.entries(data.dias).sort().map(([k, x]) => [k, x.n || 0, x.total || 0, x.cash || 0, x.transfer || 0, x.cost || 0, (x.total || 0) - (x.cost || 0)]);
+    X.utils.book_append_sheet(wb, sheet(X, [["Día", "Ventas", "Total", "Efectivo", "Transferencia", "Costo", "Ganancia"]].concat(dias), [2, 3, 4, 5, 6], [12, 9, 13, 13, 14, 13, 13]), "Resumen por día");
+    const turnos = Object.entries(data.turnos).sort().map(([k, t]) => [k, t.socio || "", t.base || 0, t.at ? hora(t.at) : ""]);
+    X.utils.book_append_sheet(wb, sheet(X, [["Día", "Caja", "Base", "Abrió"]].concat(turnos), [2], [12, 14, 12, 10]), "Cajas");
+    await saveXlsx(X, wb, `Liquidos-Market-RESPALDO-${stamp}.xlsx`);
+  } catch (e) { console.error(e); toast("No se pudo hacer el respaldo. Revisa la conexión e intenta de nuevo."); }
+  if (btn) { btn.disabled = false; btn.textContent = "Descargar respaldo completo"; }
 }
 
 /* ---------- cotizaciones al por mayor ---------- */
@@ -2156,6 +2193,7 @@ document.addEventListener("click", async e => {
     case "payok": confirmPay(); break;
     case "clearcart": st.cart = []; st.cartQuote = null; closeModal(); renderAll(); break;
     case "cqnew": newQuote(); break;
+    case "backup": backupAll(e.target.closest("button")); break;
     case "fbout": confirmBox("Cerrar sesión", "Tendrás que entrar de nuevo con Google en este equipo.", "Cerrar sesión", () => firebase.auth().signOut().then(() => location.reload())); break;
     case "accyes": accSet(id, { aprobado: true }); break;
     case "accno": confirmBox("Quitar acceso", id + " ya no podrá entrar a la app.", "Quitar", () => accSet(id, { aprobado: false, admin: false }), true); break;
