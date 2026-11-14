@@ -515,6 +515,7 @@ function renderCierre() {
     const M = metas();
     h += `<div class="box"><div class="li"><div class="a"><span class="muted small">Meta del día (para cubrir gastos fijos)</span><b class="num">${fmt(M.dia)}</b></div><div class="a" style="text-align:right"><span class="muted small">Llevas</span><b class="num">${Math.round(total / M.dia * 100)}%</b></div></div>${progressBar(total, M.dia)}<div style="height:8px"></div></div>`;
   }
+  if (isToday && turno && turno.apertura && turno.apertura.diferencia) h += `<div class="warn">⚠️ Al abrir, ${esc(turno.apertura.by)} contó ${fmt(turno.apertura.contado)} y debían ser ${fmt(turno.apertura.esperado)} (${turno.apertura.diferencia > 0 ? "sobraban" : "faltaban"} ${fmt(Math.abs(turno.apertura.diferencia))})${turno.apertura.motivo ? ": " + esc(turno.apertura.motivo) : ""}.</div>`;
   if (isToday && turno && turno.socio) h += turno.cierre ? cierreBox(turno.cierre) : (canCaja() ? `<div style="padding:12px 14px 0"><button class="btn pri block" data-act="czopen">Cerrar el día</button></div>` : "");
   h += `<div style="padding:12px 14px 0" class="row"><button class="btn pri" data-act="copy">Copiar para WhatsApp</button><button class="btn" data-act="xlsday" ${sales.length ? "" : "disabled"}>Descargar Excel</button></div>`;
   // pedidos por persona
@@ -698,20 +699,47 @@ function openDayModal() {
   const title = cur && cur !== ME ? "Tomar la caja" : "Abrir el día";
   openModal(hd(title, dayLabel(st.today)) +
     `<p class="muted" style="margin-top:4px">${cur && cur !== ME ? `Hoy la caja la tiene <b>${esc(cur)}</b>. Si continúas, <b>${esc(ME)}</b> queda como responsable de la caja y el cierre.` : `<b>${esc(ME)}</b> queda como responsable de la caja y el cierre de hoy.`}</p>
-     <div class="field"><label>Base de caja (efectivo con el que abres)</label><input id="openBase" inputmode="numeric" placeholder="$0" value="${base ? fmt(base) : ""}"></div>
      <div id="lastCz"></div>
+     <div class="field"><label>${cur ? "Base de caja (efectivo con el que abrió)" : "Cuenta el efectivo que hay en la caja"}</label><input id="openBase" inputmode="numeric" placeholder="$0" value="${base ? fmt(base) : ""}"></div>
+     <div id="openDif"></div>
+     <div class="field" id="openMotW" style="display:none"><label>¿Qué pasó? (no coincide con lo que quedó)</label><input id="openMot" placeholder="Ej: se sacó para pagar el hielo, faltó contar monedas…"></div>
      <button class="btn pri block" data-act="openday">${cur && cur !== ME ? "Tomar la caja" : cur ? "Guardar base" : "Abrir caja"}</button>
      ${cur === ME ? (st.turno.cierre ? `<div class="note" style="margin-top:12px">El día ya se cerró. <button class="linkbtn" data-act="czreopen">Reabrir la caja</button></div>` : `<button class="btn block" style="margin-top:10px" data-act="czopen">Cerrar el día</button>`) : ""}`);
   if (!cur) lastCierre().then(c => {
     const box = $("#lastCz"); if (!box || !c) return;
     box.innerHTML = `<div class="note" style="margin:0 0 12px">📋 <b>Cierre anterior</b> (${esc(dayLabel(c.day))}, ${esc(c.by)})<br>Quedó de base: <b>${fmt(c.baseManana)}</b> · Retirado/grapado: <b>${fmt(c.retirado)}</b>${c.diferencia ? `<br>${c.diferencia > 0 ? "Sobró" : "Faltó"} ${fmt(Math.abs(c.diferencia))}${c.motivo ? ": " + esc(c.motivo) : ""}` : ""}${c.notas ? `<br>📝 ${esc(c.notas)}` : ""}</div>`;
-    const bi = $("#openBase"); if (bi && !bi.value && c.baseManana) bi.value = fmt(c.baseManana);
+    openPrev = c; drawOpenDif();
   });
+  openPrev = null;
+  if (!cur) $("#openBase").addEventListener("input", drawOpenDif);
+}
+let openPrev = null;
+function drawOpenDif() {
+  const d = $("#openDif"); if (!d) return;
+  const raw = ($("#openBase").value || "").trim();
+  if (!openPrev || openPrev.baseManana == null) { d.innerHTML = ""; return; }
+  if (!raw) { d.innerHTML = `<div class="muted small" style="margin:-4px 0 10px">Según el cierre anterior debería haber <b>${fmt(openPrev.baseManana)}</b>.</div>`; $("#openMotW").style.display = "none"; return; }
+  const dif = digits(raw) - openPrev.baseManana;
+  d.innerHTML = dif === 0 ? `<div class="note" style="margin:0 0 10px">✅ Coincide con lo que quedó en el cierre anterior.</div>` : `<div class="note" style="margin:0 0 10px;border-left-color:#ffd27a">⚠️ ${dif > 0 ? "Hay" : "Faltan"} <b>${fmt(Math.abs(dif))}</b> ${dif > 0 ? "más de" : "frente a"} lo que quedó (${fmt(openPrev.baseManana)}).</div>`;
+  $("#openMotW").style.display = dif ? "" : "none";
+}
+async function openDay() {
+  const cur = st.turno && st.turno.socio, raw = (($("#openBase") || {}).value || "").trim(), base = digits(raw);
+  if (cur) { setTurno(ME, base); return; }
+  if (!raw) { toast("Cuenta el efectivo de la caja y escríbelo"); $("#openBase").focus(); return; }
+  let apertura = { contado: base, by: ME, at: Date.now() };
+  if (openPrev && openPrev.baseManana != null) {
+    const dif = base - openPrev.baseManana, mot = (($("#openMot") || {}).value || "").trim();
+    if (dif && !mot) { toast("Cuenta brevemente por qué no coincide"); $("#openMot").focus(); return; }
+    apertura = Object.assign(apertura, { esperado: openPrev.baseManana, diferencia: dif, motivo: mot, cierreAnterior: openPrev.day });
+  }
+  setTurno(ME, base, apertura);
 }
 function turnoModal() { if (!ME) whoModal(); else if (canCaja()) openDayModal(); else whoModal(); }
-async function setTurno(socio, base) {
+async function setTurno(socio, base, apertura) {
   const data = Object.assign({}, st.turno || {}, { socio, day: st.today, at: Date.now() });
   if (base != null) data.base = base;
+  if (apertura) data.apertura = apertura;
   try { await Store.set("turnos/" + st.today, data); st.turno = data; renderAll(); closeModal(); toast("Caja abierta por " + socio); if (pendingCharge) { const f = pendingCharge; pendingCharge = null; f(); } }
   catch (e) { writeErr(e); }
 }
@@ -900,6 +928,7 @@ function summaryText() {
   t += `Ventas: ${sales.length}\n*Total: ${fmt(total)}*\nEfectivo: ${fmt(cash)}\nTransferencias: ${fmt(tr)}\n`;
   if (base) t += `Base: ${fmt(base)} → Efectivo en caja: ${fmt(base + cash)}\n`;
   t += `Ganancia estimada: ${fmt(total - cost)}\n`;
+  if (isToday && st.turno && st.turno.apertura && st.turno.apertura.esperado != null) { const a = st.turno.apertura; t += `\nApertura (${a.by}): contó ${fmt(a.contado)} · ${a.diferencia ? (a.diferencia > 0 ? "sobraban " : "faltaban ") + fmt(Math.abs(a.diferencia)) + (a.motivo ? " (" + a.motivo + ")" : "") : "✅ coincidía con el cierre anterior"}\n`; }
   if (isToday && st.turno && st.turno.cierre) t += cierreText(st.turno.cierre);
   if (byP.size) { t += `\n*Pedidos por persona*\n`; for (const [k, v] of [...byP].sort((a, b) => b[1] - a[1])) t += `${k}: ${fmt(v)}\n`; }
   if (pm.size) { t += `\n*Productos*\n`; for (const [k, g] of [...pm].sort((a, b) => b[1].t - a[1].t)) t += `${g.q} × ${k} = ${fmt(g.t)}\n`; }
@@ -2318,7 +2347,7 @@ document.addEventListener("click", async e => {
     case "mypin": newPinModal(ME, true); break;
     case "resetpin": confirmBox("Restablecer contraseña", `Se borrará la contraseña de ${esc(id)}. La próxima vez que entre creará una nueva.`, "Restablecer", () => resetPin(id), true); break;
     case "takeday": openDayModal(); break;
-    case "openday": setTurno(ME, digits(($("#openBase") || {}).value)); break;
+    case "openday": openDay(); break;
     case "target": selectTarget(id); break;
     case "newtab": newTabModal(); break;
     case "mkmesa": createTab(id, "mesa"); break;
