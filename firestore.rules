@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function firmado() { return request.auth != null && request.auth.token.email_verified == true; }
+    function correo() { return request.auth.token.email.lower(); }
+    function local() { return correo() == 'liquidosmarket161016@gmail.com'; }
+    function ficha() { return get(/databases/$(database)/documents/acceso/$(correo())).data; }
+    function tieneFicha() { return exists(/databases/$(database)/documents/acceso/$(correo())); }
+    function aprobado() { return firmado() && (local() || (tieneFicha() && ficha().aprobado == true)); }
+    function admin() { return firmado() && (local() || (tieneFicha() && ficha().admin == true)); }
+
+    match /acceso/{email} {
+      allow read: if firmado() && (email == correo() || admin());
+      allow create: if (firmado() && email == correo()
+                        && request.resource.data.aprobado == false
+                        && request.resource.data.admin == false) || admin();
+      allow update, delete: if admin();
+    }
+    match /{coleccion}/{id} {
+      allow read, write: if coleccion != 'acceso' && aprobado();
+    }
+  }
+}
