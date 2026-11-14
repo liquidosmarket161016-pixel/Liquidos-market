@@ -1,0 +1,40 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prueba de caja · Líquidos Market</title>
+<style>
+body{margin:0;background:#0b0b0b;color:#fff;font:16px system-ui,sans-serif}
+main{max-width:560px;margin:auto;padding:20px}
+h1{font-size:22px;margin:4px 0 2px}.m{color:#aaa;font-size:14px}
+.card{background:#161616;border:1px solid #2a2a2a;border-radius:14px;padding:16px;margin:14px 0}
+button{width:100%;padding:16px;margin:6px 0;border-radius:12px;border:1px solid #444;background:#222;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+button.p{background:#fff;color:#000}
+input{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #444;background:#111;color:#fff;font-size:15px}
+#log{white-space:pre-wrap;font:13px ui-monospace,monospace;color:#ddd;background:#000;border-radius:10px;padding:12px;min-height:60px}
+.ok{color:#7dff9a}.bad{color:#ff8a8a}
+</style></head><body><main>
+<h1>Prueba de impresora y cajón</h1><div class="m">Proyecto Caja · Líquidos Market</div>
+<div class="card"><div class="m" style="margin-bottom:6px">Dirección del puente (XAMPP)</div>
+<input id="url" value="http://127.0.0.1/liquidos/imprimir.php">
+<button class="p" onclick="ping()">1. Conectar con el puente</button></div>
+<div class="card">
+<button onclick="rec('efectivo')">2. Recibo pagado en EFECTIVO (debe abrir el cajón)</button>
+<button onclick="rec('transferencia')">3. Recibo pagado por TRANSFERENCIA (NO abre el cajón)</button>
+<button onclick="cajon()">4. Solo abrir el cajón</button></div>
+<div id="log">Toca "Conectar con el puente".</div>
+</main><script>
+const $=s=>document.querySelector(s);
+const log=(m,c)=>{$('#log').innerHTML=`<span class="${c||''}">${m}</span>\n`+$('#log').innerHTML};
+async function call(body){
+  const u=$('#url').value.trim();
+  const r=await fetch(u,body?{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}:{});
+  return r.json();
+}
+async function ping(){try{const j=await call();log(`✅ Conectado. Puente v${j.version} · impresora "${j.impresora}" · equipo ${j.equipo}`,'ok')}catch(e){log('❌ No se pudo conectar: '+e.message+'\n   Revisa que Apache esté encendido en XAMPP y que el archivo esté en C:\\xampp\\htdocs\\liquidos\\imprimir.php. Si Chrome preguntó por permiso, toca "Permitir".','bad')}}
+async function rec(m){
+  const items=[{n:'Cerveza Águila Light Lata 330 ml',q:2,p:4000},{n:'Aguardiente Antioqueño Tapa Azul 750 ml',q:1,p:59000},{n:'Papas Margarita Pollo',q:1,p:3000}];
+  const total=items.reduce((a,i)=>a+i.q*i.p,0);
+  const v={num:'PRUEBA',fecha:new Date().toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'}),cuenta:'Mostrador',cobro:'Prueba',items,total,metodo:m};
+  if(m==='efectivo'){v.efectivo=80000;v.cambio=80000-total}else v.transferencia=total;
+  try{const j=await call({accion:'recibo',venta:v});log(j.ok?`✅ Recibo enviado (${m}) → ${j.detalle}`:'❌ '+(j.error||j.detalle),j.ok?'ok':'bad')}catch(e){log('❌ '+e.message,'bad')}
+}
+async function cajon(){try{const j=await call({accion:'cajon'});log(j.ok?'✅ Orden de abrir cajón enviada':'❌ '+(j.error||j.detalle),j.ok?'ok':'bad')}catch(e){log('❌ '+e.message,'bad')}}
+</script></body></html>
