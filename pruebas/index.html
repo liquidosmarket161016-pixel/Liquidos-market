@@ -137,6 +137,7 @@ nav svg{width:22px;height:22px}
 .x{width:40px;height:40px;border-radius:50%;border:1px solid var(--line2);font-size:18px;flex:none}
 .qty{display:flex;align-items:center;gap:6px}
 #gate{position:fixed;inset:0;z-index:999;background:#0b0b0b;display:none;place-items:center;padding:24px}#gate .gbox{max-width:360px;width:100%;text-align:center}
+.cqd{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.cqd button{border:1px solid var(--line2);border-radius:12px;padding:10px;text-align:left;background:var(--card2);color:inherit;display:flex;flex-direction:column;gap:2px}.cqd button.on{background:#fff;color:#000;border-color:#fff}.cqd .t{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;opacity:.75}.cqd b{font-size:17px}.cqd .g{font-size:12px;opacity:.8;line-height:1.3}
 .cqg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}.cqg div{background:var(--card2);border-radius:8px;padding:6px 8px}.cqg span{display:block;font-size:10.5px;color:var(--mut);font-weight:700;letter-spacing:.03em;text-transform:uppercase}.cqg b{font-size:14.5px}
 .qty button{width:38px;height:38px;border-radius:10px;border:1px solid var(--line2);font-size:20px;font-weight:700}
 .qty b{min-width:24px;text-align:center}
@@ -254,7 +255,7 @@ textarea{width:100%;min-height:200px;background:var(--card2);color:var(--tx);bor
 
   <!-- COTIZAR -->
   <section class="view" id="v-cotizar">
-    <div class="sec" style="padding-bottom:4px"><div class="h1">Cotizaciones al por mayor</div><div class="muted small">Precio mayorista = precio detal − 8% desde la venta mínima</div></div>
+    <div class="sec" style="padding-bottom:4px"><div class="h1">Cotizaciones</div><div class="muted small">Precio al público, con descuento opcional (6%, 8% o 10%)</div></div>
     <div id="cotiz"></div>
   </section>
 
@@ -941,7 +942,7 @@ function editProduct(id, presetCode) {
     <div class="field" id="ep_abcw"><label id="ep_abcl">Código del ${esc(a.l || "sixpack")}</label><input id="ep_abc" data-scan="raw" inputmode="numeric" autocomplete="off" placeholder="Opcional" value="${esc((a.bc || []).join(", "))}"></div></div>` : ""}
     ${isNew ? `<div class="row"><div class="field"><label>Existencias iniciales</label><input id="ep_q" inputmode="numeric" placeholder="0"></div>
     <div class="field"><label>Avisarme cuando queden</label><input id="ep_min" inputmode="numeric" placeholder="Ej: 6"></div></div>` : ""}
-    ${FEAT_COTIZ ? "" : "<!--"}<div class="row"><div class="field"><label>Venta mínima al por mayor</label><input id="ep_mm" inputmode="numeric" value="${p.mmin != null ? p.mmin : ""}" placeholder="Automático: ${id ? minMayorAuto(p) || "sin mayorista" : "según el tipo"}"></div><div class="field"><label>Precio mayorista (−${Math.round(DESC_MAYOR * 100)}%)</label><input id="ep_pmx" disabled value=""></div></div>${FEAT_COTIZ ? "" : "-->"}
+
     <div class="note" id="ep_info" style="font-size:12.5px;line-height:1.5"></div>
     <div class="small" id="ep_err" style="color:#ff8a8a;min-height:16px;font-weight:600"></div>
     <div class="row" style="margin-top:8px">${id ? `<button class="btn danger" data-act="delp" data-id="${p.id}">Eliminar</button>` : `<button class="btn" data-act="close">Cancelar</button>`}<button class="btn pri" data-act="savep" data-id="${p.id}">${isNew ? "Crear producto" : "Guardar"}</button></div>`);
@@ -974,7 +975,6 @@ function editProduct(id, presetCode) {
     if (beer && c) { const m6 = ap ? marginOf(ap, c * 6) : 0; r.push(`Sixpack sugerido para ganar el <b>${pct(tA)}</b>: <b>${fmt(priceFor(c * 6, tA))}</b>${ap ? `. Con ${fmt(ap)} ganas <b>${pct(m6)}</b>${m6 < tA - 0.005 ? ` <b>⚠ por debajo del ${pct(tA)}</b>` : ""}` : ""}.${v && ap && ap >= v * 6 ? " <b>⚠ El sixpack debe salir más barato que 6 unidades.</b>" : ""} El inventario se cuenta en unidades.`); }
     if (cig) r.push("El inventario se cuenta en medias; cada cigarrillo suelto descuenta 1/10 de media.");
     $("#ep_info").innerHTML = r.map(x => "• " + x).join("<br>");
-    if ($("#ep_pmx")) { const pmx = { n: $("#ep_n").value, cat, sub: pm.sub, p: v, mmin: $("#ep_mm").value.trim() === "" ? null : digits($("#ep_mm").value) }; const mm = minMayor(pmx); $("#ep_pmx").value = v && mm ? fmt(precioMayor(pmx)) + " desde " + mm + " und." : "Sin precio mayorista"; }
   };
   ["ep_c", "ep_p", "ep_cat", "ep_sub", "ep_mm", "ep_n"].forEach(i => { const x = $("#" + i); if (x) x.addEventListener("input", upd); });
   $("#ep_n").addEventListener("input", () => { $("#ep_err").textContent = ""; });
@@ -1405,7 +1405,7 @@ async function invProduct(pid) {
         <div class="kpi"><div class="kl">Existencias</div><div class="kv num">${s.q != null ? fq(s.q) : "—"}</div><div class="ks">${s.q != null ? invUnit(p) : "Sin conteo"}</div></div>
         <div class="kpi"><div class="kl">Vende por semana</div><div class="kv num">${rot[pid] ? fq(r2(rot[pid] * 7)) : "0"}</div><div class="ks">${s.days != null ? `Alcanza ~${Math.max(0, Math.round(s.days))} días` : "Sin datos de ventas"}</div></div></div>
       ${marginRows(p).map(r => `<div class="li"><div class="a"><span class="muted small">${esc(r.l)} · costo ${fmt(r.cost)}</span><b class="num">${fmt(r.cur)} · margen ${pct(r.m)}${r.low ? ` <span class="tag v">META ${pct(r.t)}</span>` : ""}</b></div>${r.low ? `<button class="linkbtn" data-act="applysug" data-id="${pid}|${r.which}">Subir a ${fmt(r.sug)}</button>` : ""}</div>`).join("")}
-      ${FEAT_COTIZ ? "" : "<!--"}<div class="li"><div class="a"><span class="muted small">Precio mayorista</span><b class="num">${minMayor(p) ? `${fmt(precioMayor(p))} · desde ${minMayor(p)} und.` : "Sin precio mayorista"}</b></div><button class="linkbtn" data-act="editp" data-id="${pid}">Cambiar mínimo</button></div>${FEAT_COTIZ ? "" : "-->"}
+
       <div class="li"><div class="a" style="flex:1"><span class="muted small">Avisarme cuando queden (mínimo)</span><input id="inv_min" inputmode="numeric" placeholder="Automático: menos de 7 días" value="${x.min != null ? x.min : ""}" style="margin-top:6px"></div></div>
       <div class="row" style="margin-top:12px"><button class="btn pri" data-act="entrada" data-id="${pid}">+ Entrada</button><button class="btn" data-act="ajuste" data-id="${pid}">${s.q == null ? "Hacer conteo" : "Ajustar conteo"}</button></div>
       ${FEAT_BARCODE ? `<div class="li"><div class="a"><span class="muted small">Código de barras</span><b class="num">${(p.bc || []).length ? esc(p.bc.join(", ")) : "Sin código"}${p.alt && (p.alt.bc || []).length ? `<br><span class="muted small">${esc(p.alt.l)}: ${esc(p.alt.bc.join(", "))}</span>` : ""}</b></div><button class="linkbtn" data-act="bcmodal" data-id="${pid}">Asignar</button></div>` : ""}
@@ -1595,7 +1595,7 @@ function onScan(code, ms) {
   }
   if (ovOpen && !$("#sheet .qty")) { toast("Cierra esta ventana para escanear"); return; }
   if (st.view === "inventario") { if (hit) invProduct(hit.p.id); else assignModal(code); return; }
-  if (st.view === "cotizar") { if (!hit) { toast("Código no registrado: " + code); return; } if (!st.cq) newQuote(); addQuoteLine(hit.p.id, hit.alt ? (hit.p.alt.u || 6) : (st.cq.lines.some(l => l.pid === hit.p.id) ? 1 : 0)); return; }
+  if (st.view === "cotizar") { if (!hit) { toast("Código no registrado: " + code); return; } if (!st.cq) newQuote(); addQuoteLine(hit.p.id, hit.alt ? (hit.p.alt.u || 6) : 1); return; }
   if (st.view !== "vender" && st.view !== "cuentas") { toast("Para vender escaneando, ve a Vender"); return; }
   if (!hit) {
     if (isSocio()) assignModal(code); else toast("Código no registrado. Pídele a un socio que lo registre.");
@@ -2080,55 +2080,32 @@ async function lastCierre() {
   return null;
 }
 
-/* ---------- cotizaciones al por mayor ---------- */
-const DESC_MAYOR = 0.08;          // precio mayorista = precio detal − 8%
-const MARGEN_ALERTA_MAYOR = 0.15; // avisa si la ganancia al por mayor queda por debajo de esto
+/* ---------- cotizaciones (precio al público + descuento opcional) ---------- */
+const DESCUENTOS = [0, 0.06, 0.08, 0.10];
+const MARGEN_ALERTA_COT = 0.15;   // avisa si la ganancia de la cotización queda por debajo de esto
 const VIGENCIA_COT = 5;           // días que dura el precio de una cotización
-function minMayorAuto(p) {
-  const n = norm(p.n);
-  if (p.cat === "Varios") return /hielo/.test(n) ? 10 : 0;
-  if (p.cat === "Cigarrería") return 10;
-  if (p.cat === "Comestibles") return 12;
-  if (p.cat === "Gaseosas y Jugos") return /\b(1[,.]5|1[,.]75|2[,.]5|3)\s*l\b|litro/.test(n) ? 6 : 12;
-  if (p.cat === "Licor") {
-    if (p.sub === "Estuches" || /estuche/.test(n)) return 0;
-    if (p.sub === "Cervezas" || /cerveza|refajo/.test(n)) return 24;
-    if (p.sub === "Cocteles") return 24;
-    if (/garrafon/.test(n)) return 6;
-    if (p.sub === "Aguardiente" || p.sub === "Ron") return /caneca|375/.test(n) ? 24 : 12;
-    return 6;
-  }
-  return 0;
-}
-const minMayor = p => p.mmin != null ? p.mmin : minMayorAuto(p);
-function precioMayor(p) {
-  let v = Math.ceil(p.p * (1 - DESC_MAYOR) / 100) * 100;
-  // nunca más caro que comprar por sixpack
-  if (p.alt && p.alt.u > 1 && p.alt.p) v = Math.min(v, Math.floor(p.alt.p / p.alt.u / 100) * 100);
-  return v;
-}
 let cotizList = [], unsubCotiz = null;
 function watchCotiz() {
   if (unsubCotiz) return;
   unsubCotiz = Store.watchCol("cotiz", null, null, docs => { cotizList = docs.sort((a, b) => b.ts - a.ts); if (st.view === "cotizar") renderCotiz(); }, e => console.error(e));
 }
+const precioDesc = (p, d) => d ? Math.round(p * (1 - d) / 50) * 50 : p; // precio con descuento, redondeado a $50
 function quoteRows(lines) {
-  return lines.map(l => {
-    const p = prodById(l.pid); if (!p) return null;
-    const min = minMayor(p), pd = p.p, pm = min > 0 ? precioMayor(p) : 0, ok = min > 0 && l.q >= min, pu = ok ? pm : pd;
-    return { pid: p.id, n: p.n, q: l.q, min, pd, pm, ok, pu, total: pu * l.q, c: p.c, m: marginOf(pu, p.c), faltan: min > 0 && !ok ? min - l.q : 0 };
-  }).filter(Boolean);
+  return lines.map(l => { const p = prodById(l.pid); return p ? { pid: p.id, n: p.n, q: l.q, p: p.p, c: p.c, total: p.p * l.q } : null; }).filter(Boolean);
 }
-function quoteTotals(rows) { const det = sum(rows, r => r.pd * r.q), tot = sum(rows, r => r.total); return { det, tot, ahorro: det - tot, und: sum(rows, r => r.q) }; }
+function quoteCalc(rows, d) {
+  const sub = sum(rows, r => r.total), total = sum(rows, r => precioDesc(r.p, d) * r.q), cost = sum(rows, r => r.c * r.q), gan = total - cost;
+  return { d, sub, desc: sub - total, total, cost, gan, m: total ? gan / total : 0 };
+}
+const pctTxt = d => d ? Math.round(d * 100) + "%" : "Sin descuento";
 const cotEstado = c => c.estado === "vendida" ? "vendida" : (c.vence && Date.now() > c.vence ? "vencida" : "pendiente");
 const fechaCorta = ts => new Date(ts).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
-function newQuote() { st.cq = { id: null, num: null, cliente: "", tel: "", lines: [] }; st.cqView = null; renderCotiz(true); }
+function newQuote() { st.cq = { id: null, num: null, cliente: "", tel: "", desc: 0, lines: [] }; st.cqView = null; renderCotiz(true); }
 function addQuoteLine(pid, q) {
   if (!st.cq) newQuote();
   const p = prodById(pid); if (!p) return;
-  const min = minMayor(p), add = q || min || 1;
   const l = st.cq.lines.find(x => x.pid === pid);
-  if (l) l.q += q || 1; else st.cq.lines.push({ pid, q: add });
+  if (l) l.q += q || 1; else st.cq.lines.push({ pid, q: q || 1 });
   renderCotiz(); toast(`${shortName(p)}: ${(l || st.cq.lines[st.cq.lines.length - 1]).q} und.`);
 }
 function setQuoteQty(pid, q) {
@@ -2138,24 +2115,24 @@ function setQuoteQty(pid, q) {
 }
 function quoteLinesHtml(rows) {
   if (!rows.length) return `<div class="empty">Busca o escanea productos para agregarlos.</div>`;
-  return rows.map(r => `<div class="li" style="display:block">
-    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-      <div class="a"><b>${esc(r.n)}</b><span class="muted small">${r.min ? `Venta mínima: ${r.min} und.` : "Sin precio mayorista"}</span></div>
-      <div class="qty"><button data-act="cqm" data-id="${r.pid}">−</button><input class="num" data-cqq="${r.pid}" inputmode="numeric" value="${r.q}" style="width:58px;text-align:center;padding:8px 4px;min-height:38px"><button data-act="cqp" data-id="${r.pid}">+</button></div></div>
-    <div class="cqg"><div><span>Precio detal</span><b class="num" style="${r.ok ? "text-decoration:line-through;color:var(--mut)" : ""}">${fmt(r.pd)}</b></div><div><span>Precio mayorista</span><b class="num">${r.pm ? fmt(r.pm) : "—"}</b></div><div><span>Total</span><b class="num">${fmt(r.total)}</b></div></div>
-    ${r.faltan ? `<div class="small" style="color:#ffd27a;margin-top:6px">⚠ Faltan ${r.faltan} und. para precio mayorista (se cobra a detal)</div>` : ""}
-    ${r.ok && r.m < MARGEN_ALERTA_MAYOR ? `<div class="small" style="color:#ff8a8a;margin-top:6px">⚠ Al por mayor ganas solo ${pct(r.m)} (${fmt(r.pu - r.c)} por und.). Revisa el costo o el precio.</div>` : ""}
-  </div>`).join("");
+  return rows.map(r => `<div class="li"><div class="a"><b>${esc(r.n)}</b><span class="muted small num">${fmt(r.p)} c/u · ${fmt(r.total)}</span></div>
+    <div class="qty"><button data-act="cqm" data-id="${r.pid}">−</button><input class="num" data-cqq="${r.pid}" inputmode="numeric" value="${r.q}" style="width:58px;text-align:center;padding:8px 4px;min-height:38px"><button data-act="cqp" data-id="${r.pid}">+</button></div></div>`).join("");
 }
-function quoteTotHtml(t) {
-  return `<div class="li"><span class="muted">Total a precio detal</span><b class="num">${fmt(t.det)}</b></div>
-    <div class="li"><span class="muted">Ahorro del cliente</span><b class="num">${fmt(t.ahorro)}</b></div>
-    <div class="total"><span class="muted">Total cotización</span><b class="num">${fmt(t.tot)}</b></div>`;
+function descHtml(rows, sel) {
+  if (!rows.length) return "";
+  return `<h3>Descuento</h3><div class="cqd">${DESCUENTOS.map(d => { const k = quoteCalc(rows, d); return `<button class="${d === sel ? "on" : ""}" data-act="cqdesc" data-id="${d}">
+      <span class="t">${pctTxt(d)}</span><b class="num">${fmt(k.total)}</b>
+      <span class="g num" style="${k.m < MARGEN_ALERTA_COT ? "color:#ff8a8a" : ""}">Ganancia ${fmt(k.gan)}<br>${pct(k.m)}${k.m < MARGEN_ALERTA_COT ? " ⚠" : ""}</span></button>`; }).join("")}</div>
+    <div class="muted small" style="padding:6px 0 10px">La ganancia es estimada: precio cobrado menos costo. Solo la ves tú, no sale en la cotización del cliente.</div>`;
+}
+function quoteTotHtml(k) {
+  return `${k.desc ? `<div class="li"><span class="muted">Subtotal</span><b class="num">${fmt(k.sub)}</b></div><div class="li"><span class="muted">Descuento ${Math.round(k.d * 100)}%</span><b class="num">− ${fmt(k.desc)}</b></div>` : ""}
+    <div class="total"><span class="muted">Total cotización</span><b class="num">${fmt(k.total)}</b></div>`;
 }
 function renderCotiz(force) {
   const el = $("#cotiz"); if (!el) return;
   if (st.cq) {
-    const rows = quoteRows(st.cq.lines), t = quoteTotals(rows);
+    const rows = quoteRows(st.cq.lines), k = quoteCalc(rows, st.cq.desc);
     if (force || !el.querySelector("#cq_lines")) {
       el.innerHTML = `<div class="box" style="padding:12px 14px">
         <div class="h1" style="font-size:17px">${st.cq.num ? "Cotización No. " + st.cq.num : "Nueva cotización"}</div>
@@ -2163,21 +2140,24 @@ function renderCotiz(force) {
         <div class="field"><label>Agregar producto</label><input id="cq_s" type="search" placeholder="Busca o escanea: corona, antioqueño…" autocomplete="off"></div>
         <div id="cq_res"></div></div>
         <div class="box" id="cq_lines"></div>
+        <div class="box" id="cq_desc"></div>
         <div class="box" id="cq_tot"></div>
         <div class="row" style="padding:0 14px"><button class="btn" data-act="cqcancel">Cancelar</button><button class="btn pri" data-act="cqsave">Guardar</button></div>
         <div class="row" style="padding:10px 14px 0"><button class="btn" data-act="cqimg">Imagen</button><button class="btn" data-act="cqtxt">Texto WhatsApp</button><button class="btn" data-act="cqsell">Vender</button></div>
-        <div class="muted small" style="padding:10px 14px 0">Precio mayorista = precio detal − ${Math.round(DESC_MAYOR * 100)}%, desde la venta mínima de cada producto. La cotización vale ${VIGENCIA_COT} días.</div>`;
+        <div class="muted small" style="padding:10px 14px 0">Precios al público. La cotización vale ${VIGENCIA_COT} días.</div>`;
       $("#cq_cli").addEventListener("input", e => { st.cq.cliente = e.target.value; });
       $("#cq_tel").addEventListener("input", e => { st.cq.tel = e.target.value; });
       const s = $("#cq_s");
       s.addEventListener("input", () => {
         const q = norm(s.value);
         const list = q.length < 2 ? [] : st.catalog.filter(x => norm(x.n).includes(q)).slice(0, 8);
-        $("#cq_res").innerHTML = list.map(x => { const m = minMayor(x); return `<button class="li" style="width:100%;text-align:left" data-act="cqadd" data-id="${x.id}"><div class="a"><b>${esc(x.n)}</b><span class="muted small num">Detal ${fmt(x.p)} · ${m ? `Mayorista ${fmt(precioMayor(x))} desde ${m} und.` : "sin precio mayorista"}</span></div><span class="tag">+ ${m || 1}</span></button>`; }).join("");
+        $("#cq_res").innerHTML = list.map(x => `<button class="li" style="width:100%;text-align:left" data-act="cqadd" data-id="${x.id}"><div class="a"><b>${esc(x.n)}</b><span class="muted small num">${fmt(x.p)}</span></div><span class="tag">+ 1</span></button>`).join("");
       });
     }
     $("#cq_lines").innerHTML = quoteLinesHtml(rows);
-    $("#cq_tot").innerHTML = quoteTotHtml(t);
+    $("#cq_desc").innerHTML = descHtml(rows, st.cq.desc);
+    $("#cq_desc").style.display = rows.length ? "" : "none";
+    $("#cq_tot").innerHTML = quoteTotHtml(k);
     el.querySelectorAll("[data-cqq]").forEach(i => i.addEventListener("change", () => setQuoteQty(i.dataset.cqq, digits(i.value))));
     return;
   }
@@ -2188,14 +2168,15 @@ function renderCotiz(force) {
   }
   const est = { pendiente: "PENDIENTE", vencida: "VENCIDA", vendida: "VENDIDA" };
   el.innerHTML = `<div class="row" style="padding:12px 14px 0"><button class="btn pri" data-act="cqnew">+ Nueva cotización</button></div>
-    <div class="box">${cotizList.length ? cotizList.map(c => { const e = cotEstado(c); return `<button class="li" style="width:100%;text-align:left" data-act="cqopen" data-id="${esc(c.id)}"><div class="a"><b>No. ${c.num} · ${esc(c.cliente || "Sin nombre")}</b><span class="muted small">${fechaCorta(c.ts)} · ${esc(c.socio || "")}</span></div><div style="text-align:right"><b class="num">${fmt(c.total)}</b><span class="tag ${e === "pendiente" ? "v" : ""}">${est[e]}</span></div></button>`; }).join("") : `<div class="empty">Todavía no hay cotizaciones.</div>`}</div>`;
+    <div class="box">${cotizList.length ? cotizList.map(c => { const e = cotEstado(c); return `<button class="li" style="width:100%;text-align:left" data-act="cqopen" data-id="${esc(c.id)}"><div class="a"><b>No. ${c.num} · ${esc(c.cliente || "Sin nombre")}</b><span class="muted small">${fechaCorta(c.ts)} · ${esc(c.socio || "")}${c.desc ? " · desc. " + Math.round(c.desc * 100) + "%" : ""}</span></div><div style="text-align:right"><b class="num">${fmt(c.total)}</b><span class="tag ${e === "pendiente" ? "v" : ""}">${est[e]}</span></div></button>`; }).join("") : `<div class="empty">Todavía no hay cotizaciones.</div>`}</div>`;
 }
 function quoteDetailHtml(c) {
-  const e = cotEstado(c), t = { det: c.totalDetal, tot: c.total, ahorro: c.totalDetal - c.total };
+  const e = cotEstado(c), d = c.desc || 0, sub = c.subtotal != null ? c.subtotal : c.totalDetal || c.total;
   return `<div class="box" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center"><div class="h1" style="font-size:17px">Cotización No. ${c.num}</div><button class="linkbtn" data-act="cqback">‹ Volver</button></div>
     <div class="muted small">${esc(c.cliente || "Sin nombre")}${c.tel ? " · " + esc(c.tel) : ""}<br>Hecha ${fechaCorta(c.ts)} por ${esc(c.socio || "")} · ${e === "vendida" ? "Vendida" : e === "vencida" ? "Venció" : "Vale hasta"} ${fechaCorta(e === "vendida" ? c.soldAt || c.ts : c.vence)}</div></div>
-    <div class="box">${c.items.map(r => `<div class="li" style="display:block"><div class="a"><b>${esc(r.n)}</b><span class="muted small">${r.q} und.${r.min ? ` · venta mínima ${r.min}` : ""}</span></div><div class="cqg"><div><span>Precio detal</span><b class="num">${fmt(r.pd)}</b></div><div><span>Precio mayorista</span><b class="num">${r.ok ? fmt(r.pm) : "—"}</b></div><div><span>Total</span><b class="num">${fmt(r.total)}</b></div></div></div>`).join("")}</div>
-    <div class="box">${quoteTotHtml(t)}</div>
+    <div class="box">${c.items.map(r => `<div class="li"><div class="a"><b>${esc(r.n)}</b><span class="muted small num">${r.q} × ${fmt(r.p != null ? r.p : r.pd)}</span></div><b class="num">${fmt((r.p != null ? r.p : r.pd) * r.q)}</b></div>`).join("")}</div>
+    <div class="box">${quoteTotHtml({ d, sub, desc: sub - c.total, total: c.total })}
+      ${c.cost != null ? `<div class="li"><span class="muted">Ganancia estimada</span><b class="num">${fmt(c.total - c.cost)} · ${pct(c.total ? (c.total - c.cost) / c.total : 0)}</b></div>` : ""}</div>
     <div class="row" style="padding:0 14px"><button class="btn" data-act="cqimg" data-id="${esc(c.id)}">Imagen</button><button class="btn" data-act="cqtxt" data-id="${esc(c.id)}">Texto WhatsApp</button></div>
     <div class="row" style="padding:10px 14px 0">${e === "pendiente" ? `<button class="btn" data-act="cqedit" data-id="${esc(c.id)}">Editar</button><button class="btn pri" data-act="cqsell" data-id="${esc(c.id)}">Vender</button>` : e === "vencida" ? `<button class="btn pri" data-act="cqedit" data-id="${esc(c.id)}">Rehacer con precios de hoy</button>` : `<button class="btn" data-act="cqedit" data-id="${esc(c.id)}">Copiar como nueva</button>`}</div>
     ${e === "pendiente" ? `<div style="text-align:center;margin-top:12px"><button class="linkbtn" data-act="cqdel" data-id="${esc(c.id)}">Eliminar cotización</button></div>` : ""}`;
@@ -2205,10 +2186,10 @@ async function saveQuote(silent) {
   const rows = quoteRows(q.lines);
   if (!rows.length) { toast("Agrega al menos un producto"); return null; }
   if (!q.cliente.trim()) { toast("Escribe el nombre del cliente"); const i = $("#cq_cli"); if (i) i.focus(); return null; }
-  const t = quoteTotals(rows), now = Date.now(), id = q.id || "c" + Store.newId();
+  const k = quoteCalc(rows, q.desc), now = Date.now(), id = q.id || "c" + Store.newId();
   const prev = cotizList.find(x => x.id === id);
   const num = q.num || (Math.max(0, ...cotizList.map(x => x.num || 0)) + 1);
-  const doc = { num, cliente: q.cliente.trim(), tel: q.tel.trim(), items: rows.map(r => ({ pid: r.pid, n: r.n, q: r.q, min: r.min, pd: r.pd, pm: r.pm, ok: r.ok, pu: r.pu, total: r.total, c: r.c })), totalDetal: t.det, total: t.tot, cost: sum(rows, r => r.c * r.q), ts: prev ? prev.ts : now, upd: now, vence: now + VIGENCIA_COT * 864e5, socio: prev ? prev.socio : ME, estado: "pendiente" };
+  const doc = { num, cliente: q.cliente.trim(), tel: q.tel.trim(), desc: q.desc, items: rows.map(r => ({ pid: r.pid, n: r.n, q: r.q, p: r.p, c: r.c, pu: precioDesc(r.p, q.desc) })), subtotal: k.sub, descuento: k.desc, total: k.total, cost: k.cost, ts: prev ? prev.ts : now, upd: now, vence: now + VIGENCIA_COT * 864e5, socio: prev ? prev.socio : ME, estado: "pendiente" };
   try {
     await Store.set("cotiz/" + id, doc);
     if (!cotizList.find(x => x.id === id)) cotizList.unshift(Object.assign({ id }, doc)); else cotizList = cotizList.map(x => x.id === id ? Object.assign({ id }, doc) : x);
@@ -2219,9 +2200,11 @@ async function saveQuote(silent) {
 }
 async function quoteFor(id) { return id ? cotizList.find(x => x.id === id) : await saveQuote(true); }
 function quoteText(c) {
+  const sub = c.subtotal != null ? c.subtotal : c.total;
   let t = `*${NEGOCIO.nombre} · COTIZACIÓN No. ${c.num}*\nCliente: ${c.cliente}\nFecha: ${fechaCorta(c.ts)} · válida hasta ${fechaCorta(c.vence)}\n\n`;
-  for (const r of c.items) t += `• ${r.q} × ${r.n}\n   Detal ${fmt(r.pd)} · Mayorista ${r.ok ? fmt(r.pm) : "—"} → *${fmt(r.total)}*${!r.ok && r.min ? `  (mayorista desde ${r.min} und.)` : ""}\n`;
-  t += `\nTotal a precio detal: ${fmt(c.totalDetal)}\n*Total cotización: ${fmt(c.total)}*\nAhorro: ${fmt(c.totalDetal - c.total)}\n\nPrecios sujetos a disponibilidad.\n📍 ${NEGOCIO.dir} · 📞 ${NEGOCIO.cel}`;
+  for (const r of c.items) { const p = r.p != null ? r.p : r.pd; t += `• ${r.q} × ${r.n} (${fmt(p)}) = ${fmt(p * r.q)}\n`; }
+  if (c.desc) t += `\nSubtotal: ${fmt(sub)}\nDescuento ${Math.round(c.desc * 100)}%: −${fmt(sub - c.total)}`;
+  t += `\n*Total: ${fmt(c.total)}*\n\nPrecios sujetos a disponibilidad.\n📍 ${NEGOCIO.dir} · 📞 ${NEGOCIO.cel}`;
   return t;
 }
 async function copyQuoteText(id) {
@@ -2241,8 +2224,9 @@ async function quoteImage(id) {
   const c = await quoteFor(id); if (!c) return;
   const logo = new Image(); logo.src = document.querySelector('img[alt="Líquidos Market"]').src;
   await new Promise(r => { if (logo.complete) r(); else { logo.onload = r; logo.onerror = r; } });
-  const W = 900, rowH = 58, S = 2, cols = [40, 450, 590, 740, 860];
-  const H = 330 + c.items.length * rowH + 230;
+  const sub = c.subtotal != null ? c.subtotal : c.total;
+  const W = 900, rowH = 50, S = 2, cols = [40, 560, 710, 860];
+  const H = 330 + c.items.length * rowH + (c.desc ? 230 : 170);
   const cv = document.createElement("canvas"); cv.width = W * S; cv.height = H * S;
   const g = cv.getContext("2d"); g.scale(S, S);
   g.fillStyle = "#fff"; g.fillRect(0, 0, W, H);
@@ -2259,31 +2243,26 @@ async function quoteImage(id) {
   let y = 262;
   g.fillStyle = "#000"; g.fillRect(30, y, W - 60, 44);
   g.fillStyle = "#fff"; g.font = "700 15px system-ui, sans-serif";
-  const head = ["Producto", "Cant.", "Precio detal", "Precio mayorista", "Total"];
-  head.forEach((h, i) => { g.textAlign = i === 0 ? "left" : "right"; g.fillText(h, i === 0 ? cols[0] + 6 : cols[i], y + 28); });
+  ["Producto", "Cant.", "Precio", "Total"].forEach((h, i) => { g.textAlign = i === 0 ? "left" : "right"; g.fillText(h, i === 0 ? cols[0] + 6 : cols[i], y + 28); });
   y += 44;
   const fit = (s, w) => { if (g.measureText(s).width <= w) return s; while (s.length > 3 && g.measureText(s + "…").width > w) s = s.slice(0, -1); return s + "…"; };
   c.items.forEach((r, i) => {
+    const p = r.p != null ? r.p : r.pd;
     if (i % 2) { g.fillStyle = "#f3f3f3"; g.fillRect(30, y, W - 60, rowH); }
     g.textAlign = "left"; g.fillStyle = "#111"; g.font = "600 17px system-ui, sans-serif";
-    g.fillText(fit(r.n, 330), cols[0] + 6, y + 26);
-    g.font = "400 13px system-ui, sans-serif"; g.fillStyle = "#777";
-    g.fillText(r.min ? (r.ok ? `Venta mínima ${r.min} und.` : `Mayorista desde ${r.min} und.`) : "Sin precio mayorista", cols[0] + 6, y + 46);
-    g.textAlign = "right"; g.font = "500 17px system-ui, sans-serif"; g.fillStyle = "#111";
-    g.fillText(String(r.q), cols[1], y + 34);
-    g.fillStyle = r.ok ? "#888" : "#111"; g.fillText(fmt(r.pd), cols[2], y + 34);
-    if (r.ok) { const w = g.measureText(fmt(r.pd)).width; g.fillRect(cols[2] - w, y + 28, w, 1.5); }
-    g.fillStyle = "#111"; g.font = "700 17px system-ui, sans-serif"; g.fillText(r.ok ? fmt(r.pm) : "—", cols[3], y + 34);
-    g.fillText(fmt(r.total), cols[4], y + 34);
+    g.fillText(fit(r.n, 460), cols[0] + 6, y + 31);
+    g.textAlign = "right"; g.font = "500 17px system-ui, sans-serif";
+    g.fillText(String(r.q), cols[1], y + 31); g.fillText(fmt(p), cols[2], y + 31);
+    g.font = "700 17px system-ui, sans-serif"; g.fillText(fmt(p * r.q), cols[3], y + 31);
     y += rowH;
   });
   g.fillStyle = "#000"; g.fillRect(30, y + 4, W - 60, 2); y += 40;
   g.textAlign = "right"; g.font = "400 18px system-ui, sans-serif"; g.fillStyle = "#555";
-  g.fillText("Total a precio detal:  " + fmt(c.totalDetal), cols[4], y); y += 32;
-  g.fillText("Ahorro:  " + fmt(c.totalDetal - c.total), cols[4], y); y += 46;
-  g.fillStyle = "#000"; g.font = "800 28px system-ui, sans-serif"; g.fillText("TOTAL:  " + fmt(c.total), cols[4], y); y += 44;
+  if (c.desc) { g.fillText("Subtotal:  " + fmt(sub), cols[3], y); y += 32; g.fillText(`Descuento ${Math.round(c.desc * 100)}%:  −${fmt(sub - c.total)}`, cols[3], y); y += 46; }
+  else y += 6;
+  g.fillStyle = "#000"; g.font = "800 28px system-ui, sans-serif"; g.fillText("TOTAL:  " + fmt(c.total), cols[3], y); y += 44;
   g.textAlign = "left"; g.font = "400 13px system-ui, sans-serif"; g.fillStyle = "#777";
-  g.fillText(`Precio mayorista desde la venta mínima de cada producto. Precios sujetos a disponibilidad. ${NEGOCIO.email}`, 40, y);
+  g.fillText(`Precios sujetos a disponibilidad. ${NEGOCIO.email}`, 40, y);
   const blob = await new Promise(r => cv.toBlob(r, "image/png"));
   await saveBlob(blob, `Cotizacion-${c.num}-${(c.cliente || "cliente").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-")}.png`, "Imagen descargada. Envíala por WhatsApp");
 }
@@ -2291,9 +2270,9 @@ async function sellQuote(id) {
   const c = await quoteFor(id); if (!c) return;
   if (cotEstado(c) !== "pendiente") { toast("Esta cotización ya no está vigente"); return; }
   const go = () => {
-    const now = Date.now();
+    const now = Date.now(), d = c.desc || 0;
     st.cart = [];
-    for (const r of c.items) for (let i = 0; i < r.q; i++) st.cart.push({ id: Store.newId(), pid: r.pid, n: r.n, v: r.ok ? "Mayorista" : (prodById(r.pid) || {}).ml || "", u: 1, p: r.pu, c: r.c, by: ME, at: now });
+    for (const r of c.items) { const p = prodById(r.pid) || {}, pu = r.pu != null ? r.pu : precioDesc(r.p, d); for (let i = 0; i < r.q; i++) st.cart.push({ id: Store.newId(), pid: r.pid, n: r.n, v: d ? "Desc. " + Math.round(d * 100) + "%" : p.ml || "", u: 1, p: pu, c: r.c, by: ME, at: now }); }
     st.cartQuote = { id: c.id, num: c.num, cliente: c.cliente };
     st.target = "mostrador"; closeModal(); showView("vender"); startPay();
   };
@@ -2364,7 +2343,8 @@ document.addEventListener("click", async e => {
     case "cqsave": saveQuote(); break;
     case "cqopen": st.cqView = id; renderCotiz(true); window.scrollTo(0, 0); break;
     case "cqback": st.cqView = null; renderCotiz(true); break;
-    case "cqedit": { const c = cotizList.find(x => x.id === id); if (!c) break; const vig = cotEstado(c) === "pendiente"; st.cq = { id: vig ? c.id : null, num: vig ? c.num : null, cliente: c.cliente, tel: c.tel || "", lines: c.items.map(r => ({ pid: r.pid, q: r.q })) }; st.cqView = null; renderCotiz(true); break; }
+    case "cqdesc": if (st.cq) { st.cq.desc = Number(id); renderCotiz(); } break;
+    case "cqedit": { const c = cotizList.find(x => x.id === id); if (!c) break; const vig = cotEstado(c) === "pendiente"; st.cq = { id: vig ? c.id : null, num: vig ? c.num : null, cliente: c.cliente, tel: c.tel || "", desc: c.desc || 0, lines: c.items.map(r => ({ pid: r.pid, q: r.q })) }; st.cqView = null; renderCotiz(true); break; }
     case "cqdel": confirmBox("Eliminar cotización", "Se borrará esta cotización.", "Eliminar", async () => { try { await Store.del("cotiz/" + id); cotizList = cotizList.filter(x => x.id !== id); st.cqView = null; renderCotiz(true); toast("Cotización eliminada"); } catch (e) { writeErr(e); } }, true); break;
     case "cqimg": quoteImage(id); break;
     case "cqtxt": copyQuoteText(id); break;
