@@ -1966,6 +1966,49 @@ async function backupAll(btn) {
 }
 
 
+
+/* ---------- importar respaldo (mudanza a Firebase) ---------- */
+function importBox() {
+  if (!FB || !fbAdmin()) return "";
+  return `<div class="box"><h3>Importar respaldo</h3><div class="muted small" style="padding:6px 0 10px">Carga un archivo <b>…RESPALDO-….json</b> descargado de la app anterior. Copia ventas, inventario, catálogo, cajas, cotizaciones, gastos y contraseñas a esta app.</div>
+    <input type="file" id="impFile" accept=".json,application/json" style="display:none"><button class="btn block" data-act="impick" style="margin-bottom:10px">Elegir archivo de respaldo</button></div>`;
+}
+function hasNestedArray(v) { if (Array.isArray(v)) return v.some(x => Array.isArray(x) || hasNestedArray(x)); if (v && typeof v === "object") return Object.values(v).some(hasNestedArray); return false; }
+async function importPick() {
+  const inp = $("#impFile"); if (!inp) return;
+  inp.value = ""; inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    let j; try { j = JSON.parse(await f.text()); } catch (e) { toast("Ese archivo no es un respaldo válido"); return; }
+    if (!j || j.tipo !== "respaldo" || !j.data) { toast("Ese archivo no es un respaldo de Líquidos Market"); return; }
+    const cols = Object.keys(j.data).filter(c => j.data[c] && Object.keys(j.data[c]).length);
+    const n = cols.reduce((a, c) => a + Object.keys(j.data[c]).length, 0);
+    let ventasYa = 0; try { ventasYa = (await Store.db.collection("sales").limit(1).get()).docs.length; } catch (e) {}
+    const name = { catalog: "Catálogo", config: "Configuración y contraseñas", stock: "Inventario", movs: "Movimientos de inventario", sales: "Ventas", dias: "Resúmenes por día", turnos: "Cajas", tabs: "Mesas abiertas", items: "Pedidos de mesas", cotiz: "Cotizaciones" };
+    openModal(hd("Importar respaldo", "Creado " + new Date(j.creado).toLocaleString("es-CO") + (j.por ? " por " + esc(j.por) : "")) + `
+      ${cols.map(c => `<div class="li"><span class="muted">${name[c] || c}</span><b class="num">${Object.keys(j.data[c]).length}</b></div>`).join("")}
+      <div class="total"><span class="muted">Total de registros</span><b class="num">${n}</b></div>
+      ${ventasYa ? `<div class="warn" style="margin:10px 0">⚠︎ Esta app ya tiene ventas. Los registros con el mismo identificador se reemplazan; los demás se conservan.</div>` : ""}
+      <div class="row" style="margin-top:12px"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" id="impGo">Importar ${n} registros</button></div>`);
+    $("#impGo").onclick = () => importRun(j, cols, n);
+  };
+  inp.click();
+}
+async function importRun(j, cols, n) {
+  const btn = $("#impGo"); btn.disabled = true;
+  let done = 0, batch = fbFs.batch(), inBatch = 0, skipped = [];
+  const flush = async () => { if (inBatch) { await batch.commit(); batch = fbFs.batch(); inBatch = 0; } };
+  try {
+    for (const c of cols) for (const [id, d] of Object.entries(j.data[c])) {
+      if (!id || id.includes("/") || hasNestedArray(d)) { skipped.push(c + "/" + id); continue; }
+      batch.set(fbFs.doc(FB_PFX + c + "/" + id), d); inBatch++; done++;
+      if (inBatch >= 400) { await flush(); btn.textContent = `Importando… ${done} de ${n}`; }
+    }
+    await flush();
+    closeModal();
+    openModal(hd("Importación terminada ✅", done + " registros copiados") + (skipped.length ? `<div class="warn">No se pudieron copiar ${skipped.length}: ${esc(skipped.slice(0, 5).join(", "))}</div>` : `<div class="note">Todo quedó copiado. La app se va a recargar para mostrar los datos.</div>`) + `<button class="btn pri block" onclick="location.reload()">Recargar</button>`);
+  } catch (e) { console.error(e); btn.disabled = false; btn.textContent = "Reintentar"; toast("Se cortó en " + done + " de " + n + ". Revisa internet y dale Reintentar (no duplica nada)."); }
+}
+
 /* ---------- Ajustes ---------- */
 function toolsHtml() {
   let h = "";
@@ -1975,7 +2018,7 @@ function toolsHtml() {
 }
 function renderAjustes() {
   const el = $("#ajustes"); if (!el) return;
-  let h = impresoraBox() + toolsHtml() + accesosBox();
+  let h = importBox() + impresoraBox() + toolsHtml() + accesosBox();
   h += `<div class="box"><h3>Contraseñas</h3>${SOCIOS.concat(ADMINS, ENCARGADAS).map(s => `<div class="li"><div class="a"><b>${esc(s)}</b><span class="muted small">${pins[s] ? "Con contraseña" : "Sin contraseña todavía"}</span></div>${s === ME ? `<button class="linkbtn" data-act="mypin">Cambiar la mía</button>` : pins[s] ? `<button class="linkbtn" data-act="resetpin" data-id="${esc(s)}">Restablecer</button>` : ""}</div>`).join("")}</div>`;
   h += `<div class="box"><h3>Gastos fijos del mes</h3><div class="li"><div class="a"><b class="num">${fmt(metas().g)}</b><span class="muted small">Se usan para calcular la meta de ventas.</span></div><button class="linkbtn" data-act="gastos">Ver o editar</button></div></div>`;
   h += `<div class="box"><h3>Respaldo</h3><div class="muted small" style="padding:6px 0 10px">Descarga TODA la información (ventas, inventario, movimientos, catálogo, cajas) en un archivo de respaldo y una copia en Excel. Guárdalos en un lugar seguro.</div><button class="btn block" data-act="backup" style="margin-bottom:10px">Descargar respaldo completo</button></div>`;
@@ -2327,6 +2370,7 @@ document.addEventListener("click", async e => {
     case "czok": saveCierre(); break;
     case "czreopen": confirmBox("Reabrir la caja", "El cierre de hoy se guarda como anterior y la caja queda abierta otra vez.", "Reabrir", reopenDay); break;
     case "backup": backupAll(e.target.closest("button")); break;
+    case "impick": importPick(); break;
     case "fbout": confirmBox("Cerrar sesión", "Tendrás que entrar de nuevo con Google en este equipo.", "Cerrar sesión", () => firebase.auth().signOut().then(() => location.reload())); break;
     case "accyes": accSet(id, { aprobado: true }); break;
     case "accno": confirmBox("Quitar acceso", id + " ya no podrá entrar a la app.", "Quitar", () => accSet(id, { aprobado: false, admin: false }), true); break;
