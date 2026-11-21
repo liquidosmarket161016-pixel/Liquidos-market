@@ -712,6 +712,7 @@ function openDayModal() {
      ${cur === ME && !st.turno.cierre ? `<button class="btn block" style="margin-top:10px" data-act="gasto">+ Gasto de caja</button>` : ""}
      ${cur === ME ? (st.turno.cierre ? `<div class="note" style="margin-top:12px">El día ya se cerró. <button class="linkbtn" data-act="czreopen">Reabrir la caja</button></div>` : `<button class="btn block" style="margin-top:10px" data-act="czopen">Cerrar el día</button>`) : ""}`);
   if (!cur) lastCierre().then(c => {
+    if (c && !esCuentaLocal()) c = Object.assign({}, c, { notas: "" });
     const box = $("#lastCz"); if (!box || !c) return;
     box.innerHTML = `<div class="note" style="margin:0 0 12px">📋 <b>Cierre anterior</b>: ${esc(c.by)}, ${fechaHora(c.at)}${c.baseManana != null ? `<br>Dejó de base: <b>${fmt(c.baseManana)}</b>` : ""}${c.notas ? `<br>📝 <b>${esc(c.notas)}</b>` : ""}</div>`;
     openPrevBase = c.baseManana != null ? c.baseManana : null; drawOpenCmp();
@@ -720,6 +721,23 @@ function openDayModal() {
   if (!cur && $("#openBase")) $("#openBase").addEventListener("input", drawOpenCmp);
 }
 let openPrevBase = null;
+// las notas del cierre anterior solo se muestran en la cuenta del local (computador de la caja)
+const esCuentaLocal = () => !FB || !!(fbUser && (fbUser.email || "").toLowerCase() === FB_BOOT);
+const NOTAS_KEY = "lm_notas_vistas";
+async function avisoNotasCierre() {
+  if (!FB || !esCuentaLocal()) return;
+  const c = await lastCierre(); if (!c || !c.notas) return;
+  let visto = ""; try { visto = localStorage.getItem(NOTAS_KEY) || ""; } catch (e) {}
+  if (visto === String(c.at)) return;
+  const show = () => {
+    if (!ME || $("#ov").classList.contains("show")) { setTimeout(show, 1500); return; }
+    openModal(hd("Notas del cierre anterior", esc(c.by) + " · " + fechaHora(c.at)) + `
+      ${c.baseManana != null ? `<div class="li"><span class="muted">Dejó de base</span><b class="num">${fmt(c.baseManana)}</b></div>` : ""}
+      <div class="note" style="font-size:16px;line-height:1.5;margin:10px 0 14px">📝 ${esc(c.notas)}</div>
+      <button class="btn pri block" data-act="notasok" data-id="${c.at}">Entendido</button>`);
+  };
+  show();
+}
 function drawOpenCmp() {
   const d = $("#openCmp"), i = $("#openBase"); if (!d || !i) return;
   const raw = (i.value || "").trim();
@@ -2402,6 +2420,7 @@ document.addEventListener("click", async e => {
     case "cqnew": newQuote(); break;
     case "czopen": closeDayModal(); break;
     case "gasto": gastoModal(); break;
+    case "notasok": try { localStorage.setItem(NOTAS_KEY, id); } catch (e) {} closeModal(); break;
     case "czsi": cz.cuadra = true; cz.draw(); break;
     case "czno": cz.cuadra = false; cz.draw(); setTimeout(() => $("#czCont").focus(), 50); break;
     case "gastook": saveGasto(); break;
@@ -2539,6 +2558,7 @@ async function start() {
   subTurno(); subSales(); subToday();
   if (!Store.db) st.turnoLoaded = true;
   if (!ME) whoModal(); else if (!Store.db && autoDay()) openDayModal();
+  avisoNotasCierre();
   setInterval(() => {
     const k = dayKey();
     if (k !== st.today) { const wasToday = st.cierreDay === st.today; st.today = k; subTurno(); subToday(); if (wasToday) { st.cierreDay = k; subSales(); } renderAll(); }
