@@ -345,14 +345,16 @@ const Store = {
     if (this.db) {
       let q = this.db.collection(col);
       if (field) q = q.where(field, "==", val);
-      return q.onSnapshot(s => cb(s.docs.map(d => Object.assign({ id: d.id }, d.data())), s.metadata), onErr);
+      const h1 = s => cb(s.docs.map(d => Object.assign({ id: d.id }, d.data())), s.metadata);
+      // en Firebase hay que pedir los cambios de metadatos: si la caché ya está al día, el aviso de "datos del servidor" llega solo así
+      return FB ? q.onSnapshot({ includeMetadataChanges: true }, h1, onErr) : q.onSnapshot(h1, onErr);
     }
     const run = () => cb([...this._c(col)].map(([id, d]) => Object.assign({ id }, d)).filter(d => !field || d[field] === val), { fromCache: false });
     this.ls.push(run); setTimeout(run, 0);
     return () => { this.ls = this.ls.filter(x => x !== run); };
   },
   watchDoc(path, cb, onErr) {
-    if (this.db) return this.db.doc(path).onSnapshot(s => cb(s.exists ? s.data() : null, s.metadata), onErr);
+    if (this.db) { const h2 = s => cb(s.exists ? s.data() : null, s.metadata); return FB ? this.db.doc(path).onSnapshot({ includeMetadataChanges: true }, h2, onErr) : this.db.doc(path).onSnapshot(h2, onErr); }
     const [c, id] = path.split("/");
     const run = () => { const d = this._c(c).get(id); cb(d ? Object.assign({}, d) : null, { fromCache: false }); };
     this.ls.push(run); setTimeout(run, 0);
