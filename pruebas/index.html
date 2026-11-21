@@ -706,14 +706,26 @@ function openDayModal() {
     `<p class="muted" style="margin-top:4px">${cur && cur !== ME ? `Hoy la caja la tiene <b>${esc(cur)}</b>. Si continúas, <b>${esc(ME)}</b> queda como responsable de la caja y el cierre.` : `<b>${esc(ME)}</b> queda como responsable de la caja y el cierre de hoy.`}</p>
      <div id="lastCz"></div>
      <div class="field"><label>${cur ? "Base de caja (efectivo con el que abrió)" : "¿Cuánto dinero hay en la caja? (cuéntalo)"}</label><input id="openBase" inputmode="numeric" placeholder="$0" value="${base ? fmt(base) : ""}"></div>
+     <div id="openCmp"></div>
 
      <button class="btn pri block" data-act="openday">${cur && cur !== ME ? "Tomar la caja" : cur ? "Guardar base" : "Abrir caja"}</button>
      ${cur === ME && !st.turno.cierre ? `<button class="btn block" style="margin-top:10px" data-act="gasto">+ Gasto de caja</button>` : ""}
      ${cur === ME ? (st.turno.cierre ? `<div class="note" style="margin-top:12px">El día ya se cerró. <button class="linkbtn" data-act="czreopen">Reabrir la caja</button></div>` : `<button class="btn block" style="margin-top:10px" data-act="czopen">Cerrar el día</button>`) : ""}`);
   if (!cur) lastCierre().then(c => {
     const box = $("#lastCz"); if (!box || !c) return;
-    box.innerHTML = `<div class="note" style="margin:0 0 12px">📋 <b>Cierre anterior</b>: ${esc(c.by)}, ${fechaHora(c.at)}<br>Al cerrar había <b>${fmt(c.contado)}</b> en caja (${difTxt(c.diferencia)})${c.notas ? `<br>📝 <b>${esc(c.notas)}</b>` : ""}</div>`;
+    box.innerHTML = `<div class="note" style="margin:0 0 12px">📋 <b>Cierre anterior</b>: ${esc(c.by)}, ${fechaHora(c.at)}${c.baseManana != null ? `<br>Dejó de base: <b>${fmt(c.baseManana)}</b>` : ""}${c.notas ? `<br>📝 <b>${esc(c.notas)}</b>` : ""}</div>`;
+    openPrevBase = c.baseManana != null ? c.baseManana : null; drawOpenCmp();
   });
+  openPrevBase = null;
+  if (!cur && $("#openBase")) $("#openBase").addEventListener("input", drawOpenCmp);
+}
+let openPrevBase = null;
+function drawOpenCmp() {
+  const d = $("#openCmp"), i = $("#openBase"); if (!d || !i) return;
+  const raw = (i.value || "").trim();
+  if (openPrevBase == null || !raw) { d.innerHTML = ""; return; }
+  const dif = digits(raw) - openPrevBase;
+  d.innerHTML = dif === 0 ? `<div class="muted small" style="margin:-4px 0 10px">✅ Coincide con la base que se dejó.</div>` : `<div class="muted small" style="margin:-4px 0 10px;color:#ffd27a">⚠️ ${dif > 0 ? "Hay " + fmt(dif) + " más" : "Faltan " + fmt(-dif)} frente a la base que se dejó (${fmt(openPrevBase)}). Anótalo en las notas del cierre si no sabes por qué.</div>`;
 }
 async function openDay() {
   const cur = st.turno && st.turno.socio, raw = (($("#openBase") || {}).value || "").trim(), base = digits(raw);
@@ -2069,43 +2081,63 @@ function closeDayModal() {
   if (st.cierreDay !== st.today) { st.cierreDay = st.today; subSales(); }
   if (!st.turno || !st.turno.socio) { toast("La caja de hoy no se ha abierto"); return; }
   const r = cajaCalc(), abiertas = st.tabs.length + (st.cart.length ? 1 : 0);
+  cz = { cuadra: null };
   openModal(hd("Cerrar el día", dayLabel(st.today) + " · caja de " + esc(st.turno.socio)) + `
     ${abiertas ? `<div class="warn" style="margin:0 0 10px">⚠︎ Hay ${abiertas} cuenta(s) sin cobrar. Cóbralas antes de cerrar.</div>` : ""}
     <div class="li"><span class="muted">Base</span><b class="num">${fmt(r.base)}</b></div>
     <div class="li"><span class="muted">+ Ventas en efectivo</span><b class="num">${fmt(r.cash)}</b></div>
     ${r.gastos ? `<div class="li"><span class="muted">− Gastos de caja</span><b class="num">${fmt(r.gastos)}</b></div>` : ""}
     <div class="total"><span class="muted">Debe haber en caja</span><b class="num">${fmt(r.enCaja)}</b></div>
-    <div class="field" style="margin-top:12px"><label>Dinero exacto que hay en la caja</label><input id="czCont" inputmode="numeric" placeholder="$0"></div>
-    <div id="czDif"></div>
-    <div class="field"><label>Notas para quien abra mañana</label><textarea id="czNotas" style="min-height:80px" placeholder="Ej: quedó de base $130.000 y dejé grapado $250.000 de las ventas. Falta hielo."></textarea></div>
+    <h3 class="muted small" style="margin:16px 0 6px;letter-spacing:.06em">1. ¿LA CAJA CUADRA?</h3>
+    <div class="seg" style="display:flex;gap:8px"><button class="btn" data-act="czsi" style="flex:1">Sí, cuadra</button><button class="btn" data-act="czno" style="flex:1">No cuadra</button></div>
+    <div id="czNoW" style="display:none;margin-top:10px"><div class="field"><label>¿Cuánto hay en la caja? (cuenta todo, antes de sacar plata)</label><input id="czCont" inputmode="numeric" placeholder="$0"></div><div id="czDif"></div></div>
+    <h3 class="muted small" style="margin:16px 0 6px;letter-spacing:.06em">2. ¿CUÁNTO DEJAS DE BASE PARA MAÑANA?</h3>
+    <div class="field"><input id="czBase" inputmode="numeric" placeholder="$0"></div>
+    <div class="total" id="czLleva" style="margin-top:-4px"><span class="muted">3. Te llevas en efectivo</span><b class="num">—</b></div>
+    <div class="field" style="margin-top:12px"><label>4. Notas para quien abra mañana</label><textarea id="czNotas" style="min-height:70px" placeholder="Ej: falta hielo, pedir Corona, la gaveta está pegada…"></textarea></div>
     <div class="row"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="czok">Cerrar el día</button></div>`);
-  $("#czCont").addEventListener("input", e => {
-    const raw = e.target.value.trim(), d = $("#czDif");
-    if (!raw) { d.innerHTML = ""; return; }
-    const dif = digits(raw) - r.enCaja;
-    d.innerHTML = dif === 0 ? `<div class="note">✅ Está igual: la caja cuadra.</div>` : `<div class="note" style="border-left-color:#ffd27a">⚠️ Hay <b>${dif > 0 ? "más" : "menos"}</b>: ${dif > 0 ? "sobran" : "faltan"} <b class="num">${fmt(Math.abs(dif))}</b>.</div>`;
-  });
-  $("#czCont").focus();
+  cz.r = r;
+  cz.draw = () => {
+    const btns = document.querySelectorAll('#sheet [data-act="czsi"],#sheet [data-act="czno"]');
+    btns.forEach(b => b.classList.toggle("pri", (b.dataset.act === "czsi" && cz.cuadra === true) || (b.dataset.act === "czno" && cz.cuadra === false)));
+    $("#czNoW").style.display = cz.cuadra === false ? "" : "none";
+    const contRaw = ($("#czCont").value || "").trim(), contado = cz.cuadra === true ? r.enCaja : cz.cuadra === false && contRaw ? digits(contRaw) : null;
+    if (cz.cuadra === false) {
+      const d = $("#czDif");
+      if (contado == null) d.innerHTML = "";
+      else { const dif = contado - r.enCaja; d.innerHTML = dif === 0 ? `<div class="note">✅ Entonces sí cuadra.</div>` : `<div class="note" style="border-left-color:#ffd27a">⚠️ ${dif > 0 ? "Sobran" : "Faltan"} <b class="num">${fmt(Math.abs(dif))}</b>.</div>`; }
+    }
+    const baseRaw = ($("#czBase").value || "").trim(), base = digits(baseRaw);
+    const lleva = contado != null && baseRaw ? contado - base : null;
+    $("#czLleva").querySelector("b").textContent = lleva == null ? "—" : fmt(lleva);
+    $("#czLleva").querySelector("b").style.color = lleva != null && lleva < 0 ? "#ff8a8a" : "";
+    cz.contado = contado; cz.base = baseRaw ? base : null; cz.lleva = lleva;
+  };
+  ["czCont", "czBase"].forEach(id => $("#" + id).addEventListener("input", cz.draw));
+  cz.draw();
 }
 async function saveCierre() {
-  const raw = ($("#czCont").value || "").trim();
-  if (!raw) { toast("Escribe el dinero exacto que hay en la caja"); $("#czCont").focus(); return; }
-  const r = cajaCalc(), contado = digits(raw);
-  const cierre = { by: ME, at: Date.now(), base: r.base, ventas: r.n, total: r.total, efectivo: r.cash, transferencias: r.tr, gastos: r.gastos, esperado: r.enCaja, contado, diferencia: contado - r.enCaja, notas: ($("#czNotas").value || "").trim() };
+  if (cz.cuadra == null) { toast("Responde si la caja cuadra"); return; }
+  if (cz.contado == null) { toast("Escribe cuánto hay en la caja"); $("#czCont").focus(); return; }
+  if (cz.base == null) { toast("Escribe la base que dejas para mañana"); $("#czBase").focus(); return; }
+  if (cz.lleva < 0) { toast("La base no puede ser mayor que lo que hay en caja"); $("#czBase").focus(); return; }
+  const r = cz.r;
+  const cierre = { by: ME, at: Date.now(), base: r.base, ventas: r.n, total: r.total, efectivo: r.cash, transferencias: r.tr, gastos: r.gastos, esperado: r.enCaja, contado: cz.contado, diferencia: cz.contado - r.enCaja, cuadra: cz.contado === r.enCaja, baseManana: cz.base, retirado: cz.lleva, notas: ($("#czNotas").value || "").trim() };
   const data = Object.assign({}, st.turno, { cierre });
   try { await Store.set("turnos/" + st.today, data); st.turno = data; closeModal(); renderAll(); toast("Día cerrado ✅"); }
   catch (e) { writeErr(e); }
 }
 const fechaHora = ts => new Date(ts).toLocaleString("es-CO", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-const difTxt = d => d === 0 ? "igual ✅" : d > 0 ? "sobran " + fmt(d) : "faltan " + fmt(-d);
+const difTxt = d => d === 0 ? "cuadró ✅" : d > 0 ? "sobraron " + fmt(d) : "faltaron " + fmt(-d);
 function cierreText(c) {
-  return `\n*Cierre de caja*\nCerró: ${c.by} · ${fechaHora(c.at)}\nDebía haber: ${fmt(c.esperado)}\nHabía: ${fmt(c.contado)} (${difTxt(c.diferencia)})\n${c.notas ? "Notas: " + c.notas + "\n" : ""}`;
+  return `\n*Cierre de caja*\nCerró: ${c.by} · ${fechaHora(c.at)}\nCaja: ${difTxt(c.diferencia)} (debía haber ${fmt(c.esperado)}, había ${fmt(c.contado)})\n${c.baseManana != null ? `Base para mañana: ${fmt(c.baseManana)}\nSe lleva en efectivo: ${fmt(c.retirado)}\n` : ""}${c.notas ? "Notas: " + c.notas + "\n" : ""}`;
 }
 function cierreBox(c) {
   return `<div class="box"><h3>Caja cerrada</h3>
     <div class="li"><div class="a"><b>${esc(c.by)}</b><span class="muted small">${fechaHora(c.at)}</span></div></div>
-    <div class="li"><span class="muted">Debía haber / había</span><b class="num">${fmt(c.esperado)} / ${fmt(c.contado)}</b></div>
-    <div class="li"><span class="muted">Resultado</span><b>${c.diferencia === 0 ? "Igual ✅" : c.diferencia > 0 ? "Más: sobran " + fmt(c.diferencia) : "Menos: faltan " + fmt(-c.diferencia)}</b></div>
+    <div class="li"><span class="muted">¿Cuadró?</span><b>${c.diferencia === 0 ? "Sí ✅" : c.diferencia > 0 ? "No · sobraron " + fmt(c.diferencia) : "No · faltaron " + fmt(-c.diferencia)}</b></div>
+    ${c.diferencia ? `<div class="li"><span class="muted">Debía haber / había</span><b class="num">${fmt(c.esperado)} / ${fmt(c.contado)}</b></div>` : ""}
+    ${c.baseManana != null ? `<div class="li"><span class="muted">Base para mañana</span><b class="num">${fmt(c.baseManana)}</b></div><div class="li"><span class="muted">Se llevó en efectivo</span><b class="num">${fmt(c.retirado)}</b></div>` : ""}
     ${c.notas ? `<div class="note">📝 ${esc(c.notas)}</div>` : ""}
     <div style="text-align:center;padding:8px 0"><button class="linkbtn" data-act="czreopen">Reabrir la caja</button></div></div>`;
 }
@@ -2370,6 +2402,8 @@ document.addEventListener("click", async e => {
     case "cqnew": newQuote(); break;
     case "czopen": closeDayModal(); break;
     case "gasto": gastoModal(); break;
+    case "czsi": cz.cuadra = true; cz.draw(); break;
+    case "czno": cz.cuadra = false; cz.draw(); setTimeout(() => $("#czCont").focus(), 50); break;
     case "gastook": saveGasto(); break;
     case "gastodel": confirmBox("Borrar gasto", "Se quita este gasto de la caja de hoy.", "Borrar", () => delGasto(id), true); break;
     case "czok": saveCierre(); break;
