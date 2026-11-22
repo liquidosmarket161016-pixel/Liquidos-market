@@ -616,7 +616,7 @@ function renderTurno() {
 
 /* ---------- modal ---------- */
 function openModal(html, refresh) { $("#sheet").innerHTML = html; $("#ov").classList.add("show"); modalRefresh = refresh || null; }
-function closeModal() { $("#ov").classList.remove("show"); $("#sheet").innerHTML = ""; modalRefresh = null; }
+function closeModal() { $("#ov").classList.remove("show"); $("#sheet").innerHTML = ""; modalRefresh = null; if (!ME && typeof whoModal === "function") whoModal(); }
 $("#ov").addEventListener("click", e => { if (e.target.id === "ov" && ME) closeModal(); });
 const hd = (title, sub) => `<div class="hd"><div><div class="h1">${title}</div>${sub ? `<div class="muted small">${sub}</div>` : ""}</div><button class="x" data-act="close">✕</button></div>`;
 
@@ -1631,6 +1631,7 @@ if (FEAT_BARCODE) {
   }, true);
 }
 function onScan(code, ms) {
+  if (!ME) { whoModal(); return; }
   const hit = findCode(code);
   Scan.log.unshift({ code, ms: Math.round(ms || 0), at: Date.now(), hit: hit ? vlabel(hit.p.n, hit.alt ? hit.p.alt.l : (hit.p.ml || "")) : "" });
   Scan.log = Scan.log.slice(0, 8);
@@ -2424,9 +2425,11 @@ async function markQuoteSold(q, saleId) {
 
 /* ---------- eventos ---------- */
 document.addEventListener("click", async e => {
-  const nb = e.target.closest("[data-nav]"); if (nb) { showView(nb.dataset.nav); return; }
+  const nb = e.target.closest("[data-nav]"); if (nb) { if (!ME) { whoModal(); return; } showView(nb.dataset.nav); return; }
   const el = e.target.closest("[data-act]"); if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
+  // sin usuario elegido no se puede hacer nada más que elegirlo
+  if (!ME && !["setme", "pinok", "pinset", "me", "close"].includes(a)) { whoModal(); return; }
   switch (a) {
     case "close": closeModal(); break;
     case "turno": turnoModal(); break;
