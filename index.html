@@ -616,8 +616,8 @@ function renderTurno() {
 
 /* ---------- modal ---------- */
 function openModal(html, refresh) { $("#sheet").innerHTML = html; $("#ov").classList.add("show"); modalRefresh = refresh || null; }
-function closeModal() { $("#ov").classList.remove("show"); $("#sheet").innerHTML = ""; modalRefresh = null; }
-$("#ov").addEventListener("click", e => { if (e.target.id === "ov") closeModal(); });
+function closeModal() { $("#ov").classList.remove("show"); $("#sheet").innerHTML = ""; modalRefresh = null; if (!ME && typeof whoModal === "function") whoModal(); }
+$("#ov").addEventListener("click", e => { if (e.target.id === "ov" && ME) closeModal(); });
 const hd = (title, sub) => `<div class="hd"><div><div class="h1">${title}</div>${sub ? `<div class="muted small">${sub}</div>` : ""}</div><button class="x" data-act="close">✕</button></div>`;
 
 function confirmBox(title, msg, okLabel, onOk, danger) {
@@ -628,8 +628,9 @@ function confirmBox(title, msg, okLabel, onOk, danger) {
 /* Turno */
 function whoModal() {
   const opt = arr => `<div class="opts">${arr.map(s => `<button data-act="setme" data-id="${esc(s)}" style="${ME === s ? "background:#fff;color:#000" : ""}">${esc(s)}</button>`).join("")}</div>`;
-  openModal(`<div class="hd"><div><div class="h1">¿Quién está usando este celular?</div><div class="muted small">Se recuerda en este dispositivo. Puedes cambiarlo tocando tu nombre arriba.</div></div>${ME ? '<button class="x" data-act="close">✕</button>' : ""}</div>
+  openModal(`<div class="hd"><div><div class="h1">¿Quién está usando este celular?</div><div class="muted small">${FB && esCuentaLocal() ? "En el computador del local se pide al abrir y se cierra solo a los " + INACTIVIDAD_MIN + " minutos sin uso." : "Se recuerda en este dispositivo. Puedes cambiarlo tocando tu nombre arriba."}</div></div>${ME ? '<button class="x" data-act="close">✕</button>' : ""}</div>
     ${ME && canCaja() && st.turno && st.turno.socio === ME ? `<button class="btn pri block" data-act="mycaja" style="margin-top:10px">${st.turno.cierre ? "Caja de hoy · día cerrado" : "Mi caja de hoy · base o cerrar el día"}</button>` : ""}
+    ${ME ? `<button class="btn block" data-act="logout" style="margin-top:10px">Salir de mi usuario (${esc(ME)})</button>` : ""}
     <h3 class="muted small" style="margin:14px 0 0;letter-spacing:.06em">SOCIOS · caja y cierre</h3>${opt(SOCIOS)}
     <h3 class="muted small" style="margin:14px 0 0;letter-spacing:.06em">ADMINISTRADOR · todo, sin abrir caja al entrar</h3>${opt(ADMINS)}
     <h3 class="muted small" style="margin:14px 0 0;letter-spacing:.06em">ENCARGADA · vende, cobra y abre caja</h3>${opt(ENCARGADAS)}
@@ -687,6 +688,19 @@ async function resetPin(name) {
   catch (e) { writeErr(e); closeModal(); }
 }
 
+function logoutMe(motivo) {
+  ME = null;
+  try { localStorage.removeItem(LS_ME); } catch (e) {}
+  closeModal(); renderAll(); whoModal();
+  if (motivo) toast(motivo);
+}
+// computador del local (cuenta de Líquidos Market): pide perfil y PIN al abrir y tras 20 minutos sin uso
+const INACTIVIDAD_MIN = 20;
+let lastAct = Date.now();
+function iniciarBloqueo() {
+  ["pointerdown", "keydown", "touchstart", "wheel"].forEach(ev => document.addEventListener(ev, () => { lastAct = Date.now(); }, { passive: true, capture: true }));
+  setInterval(() => { if (ME && Date.now() - lastAct > INACTIVIDAD_MIN * 60000) logoutMe("Se cerró tu usuario por " + INACTIVIDAD_MIN + " minutos sin uso"); }, 30000);
+}
 function setMe(name) {
   const wasDemo = isDemo();
   ME = name;
@@ -1617,6 +1631,7 @@ if (FEAT_BARCODE) {
   }, true);
 }
 function onScan(code, ms) {
+  if (!ME) { whoModal(); return; }
   const hit = findCode(code);
   Scan.log.unshift({ code, ms: Math.round(ms || 0), at: Date.now(), hit: hit ? vlabel(hit.p.n, hit.alt ? hit.p.alt.l : (hit.p.ml || "")) : "" });
   Scan.log = Scan.log.slice(0, 8);
@@ -2102,6 +2117,7 @@ function closeDayModal() {
   if (!st.turno || !st.turno.socio) { toast("La caja de hoy no se ha abierto"); return; }
   const r = cajaCalc(), abiertas = st.tabs.length + (st.cart.length ? 1 : 0);
   cz = { cuadra: null };
+  if (FB && prnUrl()) bridge({ accion: "cajon" }).catch(() => toast("No se pudo abrir la gaveta: revisa XAMPP"));
   openModal(hd("Cerrar el día", dayLabel(st.today) + " · caja de " + esc(st.turno.socio)) + `
     ${abiertas ? `<div class="warn" style="margin:0 0 10px">⚠︎ Hay ${abiertas} cuenta(s) sin cobrar. Cóbralas antes de cerrar.</div>` : ""}
     <div class="li"><span class="muted">Base</span><b class="num">${fmt(r.base)}</b></div>
@@ -2115,7 +2131,7 @@ function closeDayModal() {
     <div class="field"><input id="czBase" inputmode="numeric" placeholder="$0"></div>
     <div class="total" id="czLleva" style="margin-top:-4px"><span class="muted">3. Te llevas en efectivo</span><b class="num">—</b></div>
     <div class="field" style="margin-top:12px"><label>4. Notas para quien abra mañana</label><textarea id="czNotas" style="min-height:70px" placeholder="Ej: falta hielo, pedir Corona, la gaveta está pegada…"></textarea></div>
-    <div class="row"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="czok">Cerrar el día</button></div>`);
+    <div class="row"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="czok">${FB && prnUrl() ? "Cerrar el día e imprimir" : "Cerrar el día"}</button></div>`);
   cz.r = r;
   cz.draw = () => {
     const btns = document.querySelectorAll('#sheet [data-act="czsi"],#sheet [data-act="czno"]');
@@ -2144,8 +2160,29 @@ async function saveCierre() {
   const r = cz.r;
   const cierre = { by: ME, at: Date.now(), base: r.base, ventas: r.n, total: r.total, efectivo: r.cash, transferencias: r.tr, gastos: r.gastos, esperado: r.enCaja, contado: cz.contado, diferencia: cz.contado - r.enCaja, cuadra: cz.contado === r.enCaja, baseManana: cz.base, retirado: cz.lleva, notas: ($("#czNotas").value || "").trim() };
   const data = Object.assign({}, st.turno, { cierre });
-  try { await Store.set("turnos/" + st.today, data); st.turno = data; closeModal(); renderAll(); toast("Día cerrado ✅"); }
+  try { await Store.set("turnos/" + st.today, data); st.turno = data; closeModal(); renderAll(); toast("Día cerrado ✅"); if (FB && prnUrl()) printCierre(cierre); }
   catch (e) { writeErr(e); }
+}
+function cierreParaImprimir(c) {
+  const t = st.turno || {}, g = gastosDia(t);
+  const open = st.tabs.map(tb => sum(targetItems(tb.id), i => i.p)), abiertas = st.tabs.length + (st.cart.length ? 1 : 0);
+  return {
+    dia: dayLabel(st.today), abrio: t.socio || "", hora_abrio: t.at ? hora(t.at) : "", cerro: c.by, hora_cerro: hora(c.at),
+    ventas: c.ventas, total: c.total, efectivo: c.efectivo, transferencias: c.transferencias,
+    gastos: g.map(x => ({ c: x.c, v: x.v })), total_gastos: c.gastos || 0,
+    base: c.base, esperado: c.esperado, contado: c.contado, diferencia: c.diferencia,
+    base_manana: c.baseManana, se_lleva: c.retirado, notas: c.notas || "",
+    abiertas, total_abiertas: open.reduce((a, b) => a + b, 0) + sum(st.cart, i => i.p)
+  };
+}
+async function printCierre(c) {
+  if (!prnUrl()) { toast("Activa la impresora de este equipo en Ajustes"); return; }
+  try {
+    const v = await bridge();
+    if (!v.version || parseFloat(v.version) < 1.2) { toast("Para imprimir el cierre hay que actualizar el puente de impresión (puente-caja.zip)"); return; }
+    await bridge({ accion: "cierre", cierre: cierreParaImprimir(c) });
+    toast("Imprimiendo el cierre…");
+  } catch (e) { console.error(e); toast("No se pudo imprimir el cierre: revisa que XAMPP esté encendido"); }
 }
 const fechaHora = ts => new Date(ts).toLocaleString("es-CO", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 const difTxt = d => d === 0 ? "cuadró ✅" : d > 0 ? "sobraron " + fmt(d) : "faltaron " + fmt(-d);
@@ -2159,6 +2196,7 @@ function cierreBox(c) {
     ${c.diferencia ? `<div class="li"><span class="muted">Debía haber / había</span><b class="num">${fmt(c.esperado)} / ${fmt(c.contado)}</b></div>` : ""}
     ${c.baseManana != null ? `<div class="li"><span class="muted">Base para mañana</span><b class="num">${fmt(c.baseManana)}</b></div><div class="li"><span class="muted">Se llevó en efectivo</span><b class="num">${fmt(c.retirado)}</b></div>` : ""}
     ${c.notas ? `<div class="note">📝 ${esc(c.notas)}</div>` : ""}
+    ${FB && prnUrl() ? `<button class="btn block" data-act="reprintcz" style="margin:6px 0">Reimprimir cierre</button>` : ""}
     <div style="text-align:center;padding:8px 0"><button class="linkbtn" data-act="czreopen">Reabrir la caja</button></div></div>`;
 }
 async function reopenDay() {
@@ -2387,9 +2425,11 @@ async function markQuoteSold(q, saleId) {
 
 /* ---------- eventos ---------- */
 document.addEventListener("click", async e => {
-  const nb = e.target.closest("[data-nav]"); if (nb) { showView(nb.dataset.nav); return; }
+  const nb = e.target.closest("[data-nav]"); if (nb) { if (!ME) { whoModal(); return; } showView(nb.dataset.nav); return; }
   const el = e.target.closest("[data-act]"); if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
+  // sin usuario elegido no se puede hacer nada más que elegirlo
+  if (!ME && !["setme", "pinok", "pinset", "me", "close"].includes(a)) { whoModal(); return; }
   switch (a) {
     case "close": closeModal(); break;
     case "turno": turnoModal(); break;
@@ -2422,6 +2462,8 @@ document.addEventListener("click", async e => {
     case "cqnew": newQuote(); break;
     case "czopen": closeDayModal(); break;
     case "gasto": gastoModal(); break;
+    case "logout": logoutMe("Usuario cerrado. Elige quién va a usar la app."); break;
+    case "reprintcz": if (st.turno && st.turno.cierre) printCierre(st.turno.cierre); break;
     case "notasok": try { localStorage.setItem(NOTAS_KEY, id); } catch (e) {} closeModal(); break;
     case "czsi": cz.cuadra = true; cz.draw(); break;
     case "czno": cz.cuadra = false; cz.draw(); setTimeout(() => $("#czCont").focus(), 50); break;
@@ -2542,6 +2584,7 @@ function subTurno() {
 async function start() {
   renderAll(); showBanner();
   const ok = await Store.init();
+  if (FB && esCuentaLocal()) { if (ME) { ME = null; try { localStorage.removeItem(LS_ME); } catch (e) {} renderAll(); } iniciarBloqueo(); }
   if (isDemo()) await enterDemo(ok);
   st.mode = isDemo() ? "demo" : ok ? "db" : "local"; showBanner();
   if (ok && !isDemo()) { loadTimer = setTimeout(() => { if (!st.confirmed) { st.stale = true; showBanner(); } }, 10000); }
