@@ -2084,7 +2084,7 @@ function localOpenModal() {
   st.forceLocal = true;
   lo = { estado: null, prev: null };
   const otro = st.turno && st.turno.socio && st.turno.socio !== ME ? st.turno.socio : "";
-  openModal(`<div class="hd"><div><div class="h1">Iniciar turno en el local</div><div class="muted small">${esc(dayLabel(st.today))} · ${esc(ME)}</div></div></div>
+  openModal(`<div class="hd"><div><div class="h1">Iniciar turno</div><div class="muted small">${esc(dayLabel(st.today))} · ${esc(ME)}</div></div></div>
     ${otro ? `<div class="warn" style="margin:0 0 10px">La caja aparece abierta por ${esc(otro)} desde otro equipo. Igual hay que contar la plata aquí.</div>` : ""}
     <div id="loPrev"><div class="muted small">Buscando el cierre anterior…</div></div>
     ${prnUrl() ? `<div class="muted small" style="margin:8px 0">🔓 La gaveta se abrió para que cuentes.</div>` : ""}
