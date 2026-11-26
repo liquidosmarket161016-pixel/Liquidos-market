@@ -444,8 +444,7 @@ function renderTargets() {
   const on = $("#targets .chip.on"); if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 function renderCats() {
-  const tabs = promosActivas() ? ["Promos"].concat(TABS) : TABS;
-  if (st.tab === "Promos" && !promosActivas()) st.tab = TABS[0];
+  const tabs = ["Promos"].concat(TABS);
   $("#tabs").innerHTML = tabs.map(c => `<button class="tab ${!st.q && st.tab === c ? "on" : ""}" data-act="tab" data-id="${esc(c)}">${esc(c)}</button>`).join("");
   const showSubs = !st.q && st.tab === "Licor";
   $("#cats").style.display = showSubs ? "" : "none";
@@ -2159,6 +2158,8 @@ async function loConfirm() {
 /* ---------- PROMOS (autorizadas por los socios) ---------- */
 // Cada promo se descompone en sus productos: así el inventario se descuenta bien y el precio de la promo
 // se reparte entre los productos que se cobran (los regalos van en $0).
+// Para cambiar las promos: agregar una campaña nueva a CAMPANAS con sus fechas (las autorizan los socios).
+const CAMPANAS = [];
 const PROMO_CFG = {
   nombre: "Black Friday", desde: "2026-11-27", hasta: "2026-11-29",
   lista: [
@@ -2192,8 +2193,13 @@ const PROMO_CFG = {
     { id: "bf15", n: "Combo antojo dulce", sub: "Chocolatina Jet + Nucita + Festival", p: 3000, items: [{ pid: "c074" }, { pid: "c083" }, { pid: "c082" }] }
   ]
 };
+CAMPANAS.push(PROMO_CFG);
 const PREMIUM = ["p068", "p074", "p075", "p071"]; // Corona, Stella, Heineken, Modelo
-const promosActivas = () => ENV === "pruebas" || (st.today >= PROMO_CFG.desde && st.today <= PROMO_CFG.hasta);
+// en pruebas se ve la campaña más reciente aunque no esté vigente, para poder revisarla antes
+const campanaActiva = () => CAMPANAS.find(c => st.today >= c.desde && st.today <= c.hasta) || (ENV === "pruebas" ? CAMPANAS[CAMPANAS.length - 1] : null) || null;
+const promosActivas = () => !!campanaActiva();
+const MESES_P = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const fechaCampana = c => { const a = c.desde.split("-"), b = c.hasta.split("-"); return a[1] === b[1] ? `del ${+a[2]} al ${+b[2]} de ${MESES_P[+b[1] - 1]}` : `del ${+a[2]} de ${MESES_P[+a[1] - 1]} al ${+b[2]} de ${MESES_P[+b[1] - 1]}`; };
 function promoOpciones(def) {
   if (def.dyn === "botella") return st.catalog.filter(p => (p.sub === "Whisky" || p.sub === "Tequila") && !/crema/i.test(p.n)).sort((a, b) => a.p - b.p)
     .map(p => p.sub === "Whisky" ? { l: p.n + " + Soda Bretaña 1,5 L", p: p.p, items: [{ pid: p.id }, { pid: "g010", gift: 1 }] } : { l: p.n + " + Quatro 1,5 L", p: p.p, items: [{ pid: p.id }, { pid: "g006", gift: 1 }] });
@@ -2207,9 +2213,11 @@ function promoRango(def) {
   return { p: Math.min(...ps), pMax: Math.max(...ps), antes: Math.max(...an), varios: ops.length > 1 };
 }
 function renderPromos() {
+  const C = campanaActiva();
+  if (!C) { $("#plist").innerHTML = `<div class="empty" style="padding:40px 20px">🏷️ <b>No hay promos disponibles por ahora.</b><br><span class="muted small">Cuando los socios autoricen las promos de la semana, aparecerán aquí.</span></div>`; return; }
   const counts = {}; for (const it of targetItems()) if (it.promo) { counts[it.promo] = counts[it.promo] || new Set(); counts[it.promo].add(it.pg); }
-  $("#plist").innerHTML = `<div class="note" style="margin:0 0 8px">🏷️ <b>${esc(PROMO_CFG.nombre)}</b> · válidas del ${PROMO_CFG.desde.slice(8)} al ${PROMO_CFG.hasta.slice(8)} de noviembre${ENV === "pruebas" ? " (en pruebas se ven siempre)" : ""}. Se descuentan del inventario producto por producto.</div>` +
-    PROMO_CFG.lista.map(def => {
+  $("#plist").innerHTML = `<div class="note" style="margin:0 0 8px">🏷️ <b>${esc(C.nombre)}</b> · válidas ${fechaCampana(C)}${ENV === "pruebas" && !(st.today >= C.desde && st.today <= C.hasta) ? " (en pruebas se ven antes de tiempo)" : ""}. Se descuentan del inventario producto por producto.</div>` +
+    C.lista.map(def => {
       const r = promoRango(def), n = counts[def.id] ? counts[def.id].size : 0;
       let sub = def.sub;
       if (!sub && def.items) { const m = new Map(); for (const x of def.items) { const pr = prodById(x.pid), k = x.pid + (x.alt ? "a" : "") + (x.gift ? "g" : ""); const lbl = pr ? (x.alt && pr.alt ? pr.alt.l + " " : "") + shortName(pr) + (x.gift ? " (gratis)" : "") : "producto no encontrado"; const e = m.get(k) || { l: lbl, q: 0 }; e.q++; m.set(k, e); } sub = [...m.values()].map(e => (e.q > 1 ? e.q + " × " : "") + e.l).join(" + "); }
@@ -2221,8 +2229,7 @@ function renderPromos() {
     }).join("");
 }
 function promoPick(id) {
-  const def = PROMO_CFG.lista.find(x => x.id === id); if (!def) return;
-  if (!promosActivas()) { toast("Las promos no están vigentes hoy"); return; }
+  const C = campanaActiva(), def = C && C.lista.find(x => x.id === id); if (!def) { toast("Esa promo ya no está vigente"); return; }
   const ops = promoOpciones(def);
   if (!ops) { addPromo(def, def); return; }
   openModal(hd(def.n, "Elige la opción") + ops.map((o, i) => { const an = precioNormal(o.items), agot = o.items.some(x => st.stock[x.pid] && st.stock[x.pid].q <= 0);
@@ -2230,7 +2237,7 @@ function promoPick(id) {
     `<button class="btn block" data-act="close" style="margin-top:10px">Cancelar</button>`);
 }
 function promoPickOpt(key) {
-  const [id, i] = key.split("|"), def = PROMO_CFG.lista.find(x => x.id === id); if (!def) return;
+  const [id, i] = key.split("|"), C = campanaActiva(), def = C && C.lista.find(x => x.id === id); if (!def) return;
   const o = promoOpciones(def)[Number(i)]; if (!o) return;
   closeModal(); addPromo(def, o);
 }
