@@ -856,7 +856,7 @@ function sheetHtml() {
 function openSheet() { openModal(sheetHtml(), () => { $("#sheet").innerHTML = sheetHtml(); }); }
 
 /* Cobrar */
-let pay = null, pendingCharge = null;
+let pay = null, pendingCharge = null, lastSale = null;
 function startPay() {
   if (!canCaja() && st.target !== "mostrador") return; // las meseras solo cobran el mostrador
   if (!(st.turno && st.turno.socio)) {
@@ -921,7 +921,8 @@ async function confirmPay() {
   const saleId = Store.newId();
   try { await Store.set("sales/" + saleId, sale); applyStock(lines, 1); }
   catch (e) { btn.disabled = false; btn.textContent = "Registrar venta"; writeErr(e); return; }
-  printSale(Object.assign({ id: saleId }, sale));
+  lastSale = Object.assign({ id: saleId }, sale);
+  if (FB && prnUrl() && sale.cash) bridge({ accion: "cajon" }).catch(() => toast("No se pudo abrir la gaveta: revisa XAMPP"));
   // limpiar la cuenta
   if (p.quote) markQuoteSold(p.quote, saleId);
   if (p.target === "mostrador") { const ids = new Set(p.items.map(i => i.id)); st.cart = st.cart.filter(i => !ids.has(i.id)); if (!st.cart.length) st.cartQuote = null; }
@@ -938,7 +939,7 @@ async function confirmPay() {
   }
   pay = null;
   const msg = sale.change ? `Venta registrada · Vuelto ${fmt(sale.change)}` : "Venta registrada " + fmt(sale.total);
-  openModal(hd("✓ Venta registrada") + `<div class="total" style="border:0"><span class="muted">${esc(sale.label)}</span><b class="num">${fmt(sale.total)}</b></div>${sale.change ? `<div class="calc" style="font-size:20px"><span>Vuelto</span><span class="num">${fmt(sale.change)}</span></div>` : ""}${sale.transfer ? `<div class="note">Recuerda: comprobante de ${fmt(sale.transfer)} al grupo de WhatsApp.</div>` : ""}<button class="btn pri block" data-act="close" style="margin-top:10px">Listo</button>`);
+  openModal(hd("✓ Venta registrada") + `<div class="total" style="border:0"><span class="muted">${esc(sale.label)}</span><b class="num">${fmt(sale.total)}</b></div>${sale.change ? `<div class="calc" style="font-size:20px"><span>Vuelto</span><span class="num">${fmt(sale.change)}</span></div>` : ""}${sale.transfer ? `<div class="note">Recuerda: comprobante de ${fmt(sale.transfer)} al grupo de WhatsApp.</div>` : ""}${FB && prnUrl() ? `<button class="btn block" data-act="printlast" style="margin-top:10px">🧾 Imprimir recibo</button>` : ""}<button class="btn pri block" data-act="close" style="margin-top:10px">Listo</button>`);
   renderAll();
 }
 
@@ -950,7 +951,7 @@ function viewSale(id) {
     (s.items || []).map(i => `<div class="li"><div class="a"><b>${esc(vlabel(i.n, i.v))}</b><span class="muted small num">${i.q} × ${fmt(i.p)}</span></div><b class="num">${fmt(i.q * i.p)}</b></div>`).join("") +
     `<div class="total"><span class="muted">${esc(pay)}</span><b class="num">${fmt(s.total)}</b></div>
      <div class="row" style="margin-top:10px"><button class="btn" data-act="close">Cerrar</button><button class="btn danger" data-act="voidsale" data-id="${esc(s.id)}">Anular venta</button></div>
-     ${FB && prnUrl() ? `<button class="btn block" style="margin-top:10px" data-act="reprint" data-id="${esc(s.id)}">Reimprimir recibo</button>` : ""}`);
+     ${FB && prnUrl() ? `<button class="btn block" style="margin-top:10px" data-act="reprint" data-id="${esc(s.id)}">🧾 Imprimir recibo</button>` : ""}`);
 }
 
 /* Resumen WhatsApp */
@@ -2540,6 +2541,7 @@ document.addEventListener("click", async e => {
     case "cqnew": newQuote(); break;
     case "czopen": closeDayModal(); break;
     case "gasto": gastoModal(); break;
+    case "printlast": if (lastSale) { printSale(lastSale, true); toast("Imprimiendo recibo…"); const b = e.target.closest("button"); if (b) { b.disabled = true; b.textContent = "Recibo enviado a la impresora"; } } break;
     case "hdrcajon": if (isSocio()) bridge({ accion: "cajon" }).then(() => toast("Gaveta abierta")).catch(() => toast("No se pudo abrir: revisa XAMPP")); break;
     case "look": if (lo) { lo.estado = "ok"; loDraw(); } break;
     case "lodif": if (lo) { lo.estado = "dif"; loDraw(); setTimeout(() => $("#loCont").focus(), 50); } break;
