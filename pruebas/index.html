@@ -153,6 +153,7 @@ nav svg{width:22px;height:22px}
 .seg button.on{background:var(--hi);color:var(--on-hi)}
 .quick{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
 .quick button{border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font-weight:600;font-size:13.5px}
+.quick button.on{background:var(--acc,#c8102e);color:#fff;border-color:transparent}
 .calc{background:var(--card2);border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;justify-content:space-between;font-weight:700}
 .note{font-size:13px;color:#ddd;background:var(--card2);border-left:3px solid #fff;border-radius:8px;padding:10px 12px;margin:10px 0}
 .opts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:12px 0}
@@ -1433,6 +1434,14 @@ async function logMov(m) {
   const doc = Object.assign({ ts: now, day: dayKey(now), by: ME || "" }, m);
   try { await Store.set("movs/" + Store.newId(), doc); } catch (e) { console.error(e); }
 }
+/* ---------- registro interno (quién hizo qué) ---------- */
+async function logReg(tipo, d) {
+  const now = Date.now();
+  const doc = Object.assign({ ts: now, day: dayKey(now), tipo, by: ME || "(sin usuario)", cuenta: (typeof fbUser !== "undefined" && fbUser && fbUser.email) || "" }, d);
+  try { await Store.set("registro/" + Store.newId(), doc); } catch (e) { console.error(e); }
+}
+const REG_TIPOS = { anulacion: "Venta anulada", cuenta: "Cuenta cancelada", ajuste: "Ajuste de conteo", inicial: "Conteo inicial", entrada: "Entrada de mercancía", producto: "Producto eliminado" };
+const resumenItems = its => (its || []).map(i => `${i.q > 1 ? i.q + "× " : ""}${i.n || ""}${i.v ? " (" + i.v + ")" : ""}`).join(", ");
 async function applyStock(lines, sign) {
   for (const l of lines) {
     if (!l.pid || !st.stock[l.pid]) continue;
@@ -1531,6 +1540,7 @@ async function saveEntrada(pid, more) {
   try {
     await Store.set("stock/" + pid, next); st.stock[pid] = next;
     await logMov({ type: "entrada", pid, n: p.n, q: qn, c, note });
+    logReg("entrada", { pid, label: p.n, from: cur ? cur.q : null, to: next.q, dif: qn, valor: qn * (c || p.c || 0), nota: note });
     if (c && c !== p.c) {
       const d = Object.assign({}, p, { c });
       if (d.alt) d.alt = Object.assign({}, d.alt, { c: d.alt.l === "Sixpack" ? c * 6 : d.cat === "Cigarrería" ? Math.round(c / 10) : Math.round(c * d.alt.p / d.p) });
@@ -1559,6 +1569,7 @@ async function saveAjuste(pid) {
   try {
     await Store.set("stock/" + pid, next); st.stock[pid] = next;
     await logMov(cur ? { type: "ajuste", pid, n: p.n, from: cur.q, to: qn, q: r2(qn - cur.q), note: $("#aj_n").value.trim() } : { type: "inicial", pid, n: p.n, q: qn, note: $("#aj_n").value.trim() });
+    logReg(cur ? "ajuste" : "inicial", { pid, label: p.n, from: cur ? cur.q : null, to: qn, dif: cur ? r2(qn - cur.q) : qn, valor: Math.round((cur ? qn - cur.q : qn) * (p.c || 0)), nota: $("#aj_n").value.trim() });
     toast("Conteo guardado"); renderAll(); invProduct(pid);
   } catch (e) { writeErr(e); }
 }
@@ -2005,7 +2016,7 @@ function impresoraBox() {
 
 
 /* ---------- respaldo completo ---------- */
-const BACKUP_COLS = ["catalog", "config", "stock", "movs", "sales", "dias", "turnos", "tabs", "items", "cotiz"];
+const BACKUP_COLS = ["catalog", "config", "stock", "movs", "sales", "dias", "turnos", "tabs", "items", "cotiz", "registro"];
 async function readAll(col) {
   if (Store.db) { const sn = await Store.db.collection(col).get(); const o = {}; for (const d of sn.docs) o[d.id] = d.data(); return o; }
   const o = {}; for (const [id, d] of Store._c(col)) o[id] = d; return o;
@@ -2281,9 +2292,35 @@ function renderAjustes() {
   const el = $("#ajustes"); if (!el) return;
   let h = importBox() + impresoraBox() + toolsHtml() + accesosBox();
   h += `<div class="box"><h3>Contraseñas</h3>${SOCIOS.concat(ADMINS, ENCARGADAS).map(s => `<div class="li"><div class="a"><b>${esc(s)}</b><span class="muted small">${pins[s] ? "Con contraseña" : "Sin contraseña todavía"}</span></div>${s === ME ? `<button class="linkbtn" data-act="mypin">Cambiar la mía</button>` : pins[s] ? `<button class="linkbtn" data-act="resetpin" data-id="${esc(s)}">Restablecer</button>` : ""}</div>`).join("")}</div>`;
+  if (isSocio()) h += `<div class="box"><h3>Registro de movimientos</h3><div class="li"><div class="a"><b>Anulaciones y cambios de inventario</b><span class="muted small">Quién hizo cada cambio, cuándo y qué cambió. Solo lo ven los socios.</span></div><button class="linkbtn" data-act="regver">Ver registro</button></div></div>`;
   h += `<div class="box"><h3>Gastos fijos del mes</h3><div class="li"><div class="a"><b class="num">${fmt(metas().g)}</b><span class="muted small">Se usan para calcular la meta de ventas.</span></div><button class="linkbtn" data-act="gastos">Ver o editar</button></div></div>`;
   h += `<div class="box"><h3>Respaldo</h3><div class="muted small" style="padding:6px 0 10px">Descarga TODA la información (ventas, inventario, movimientos, catálogo, cajas) en un archivo de respaldo y una copia en Excel. Guárdalos en un lugar seguro.</div><button class="btn block" data-act="backup" style="margin-bottom:10px">Descargar respaldo completo</button></div>`;
   el.innerHTML = h;
+}
+
+let regCache = null;
+async function regLoad() {
+  if (Store.db) { const sn = await Store.db.collection("registro").orderBy("ts", "desc").limit(500).get(); return sn.docs.map(d => d.data()); }
+  return [...Store._c("registro").values()].sort((a, b) => b.ts - a.ts);
+}
+function regLine(r) {
+  const t = REG_TIPOS[r.tipo] || r.tipo, neg = (r.dif || 0) < 0 || r.tipo === "anulacion" || r.tipo === "cuenta";
+  let det = "", val = "";
+  if (r.tipo === "anulacion") { det = `${esc(r.label)}${r.vendio ? " · la vendió " + esc(r.vendio) : ""}${r.horaVenta ? " a las " + hora(r.horaVenta) : ""}${r.detalle ? "<br>" + esc(r.detalle) : ""}`; val = fmt(r.total); }
+  else if (r.tipo === "cuenta") { det = `${esc(r.label)}${r.detalle ? "<br>" + esc(r.detalle) : ""}`; val = fmt(r.total); }
+  else if (r.tipo === "producto") { det = esc(r.label) + (r.from != null ? ` · tenía ${fq(r.from)}` : ""); }
+  else { det = `${esc(r.label)} · ${r.from != null ? fq(r.from) + " → " : ""}${fq(r.to)}${r.nota ? " · " + esc(r.nota) : ""}`; val = (r.dif > 0 ? "+" : "") + fq(r.dif); }
+  return `<div class="li"><div class="a"><b>${esc(t)}</b><span class="muted small">${esc(r.day)} ${hora(r.ts)} · <b>${esc(r.by)}</b></span><span class="small">${det}</span></div><b class="num" style="${neg ? "color:#ff8a8a" : ""}">${val}</b></div>`;
+}
+async function regModal(filtro) {
+  if (!isSocio()) return;
+  if (filtro === undefined || !regCache) { openModal(hd("Registro de movimientos", "Cargando…") + `<div class="empty">Cargando…</div>`); try { regCache = await regLoad(); } catch (e) { console.error(e); closeModal(); toast("No se pudo cargar el registro. Revisa la conexión."); return; } }
+  const f = filtro || "todo", list = regCache.filter(r => f === "todo" || r.tipo === f || (f === "ajuste" && r.tipo === "inicial"));
+  const chip = (k, l) => `<button class="${f === k ? "on" : ""}" data-act="regf" data-id="${k}">${l}</button>`;
+  openModal(hd("Registro de movimientos", "Solo lo ven los socios") + `
+    <div class="quick" style="flex-wrap:wrap">${chip("todo", "Todo")}${chip("anulacion", "Anulaciones")}${chip("cuenta", "Cuentas canceladas")}${chip("ajuste", "Ajustes")}${chip("entrada", "Entradas")}${chip("producto", "Productos eliminados")}</div>
+    ${list.length ? list.slice(0, 200).map(regLine).join("") : `<div class="empty">Todavía no hay movimientos registrados${f !== "todo" ? " de este tipo" : ""}.</div>`}
+    <button class="btn block" data-act="close" style="margin-top:10px">Cerrar</button>`);
 }
 
 /* ---------- Gastos de caja y cerrar el día ---------- */
@@ -2714,7 +2751,7 @@ document.addEventListener("click", async e => {
     case "canceltab": {
       const t = st.target, its = targetItems(t);
       confirmBox("Cancelar " + targetName(t), its.length ? `Se borrarán ${its.length} producto(s) por ${fmt(sum(its, i => i.p))} sin registrar venta.` : "La cuenta está vacía.", "Sí, cancelar cuenta", async () => {
-        try { for (const i of its) await Store.del("items/" + i.id); await Store.del("tabs/" + t); st.items = st.items.filter(i => i.tab !== t); st.tabs = st.tabs.filter(x => x.id !== t); st.target = "mostrador"; closeModal(); renderAll(); toast("Cuenta cancelada"); }
+        try { if (its.length) logReg("cuenta", { label: targetName(t), total: sum(its, i => i.p), detalle: resumenItems(its) }); for (const i of its) await Store.del("items/" + i.id); await Store.del("tabs/" + t); st.items = st.items.filter(i => i.tab !== t); st.tabs = st.tabs.filter(x => x.id !== t); st.target = "mostrador"; closeModal(); renderAll(); toast("Cuenta cancelada"); }
         catch (err) { writeErr(err); closeModal(); }
       }, true);
       break;
@@ -2734,6 +2771,8 @@ document.addEventListener("click", async e => {
     case "ajuste": ajusteModal(id); break;
     case "applysug": { const [pid, w] = id.split("|"); applySuggested(pid, w); break; }
     case "gastos": gastosModal(); break;
+    case "regver": regModal(); break;
+    case "regf": regModal(id); break;
     case "gadd": $("#gx").insertAdjacentHTML("beforeend", '<div class="row" style="gap:8px;margin:6px 0"><input data-g="n" placeholder="Concepto"><input data-g="v" inputmode="numeric" placeholder="$0" style="max-width:150px"></div>'); break;
     case "gsave": saveGastos(); break;
     case "asg": { const [pid, w, ...c] = id.split("|"); assignCode(pid, w, c.join("|")); break; }
@@ -2756,7 +2795,7 @@ document.addEventListener("click", async e => {
     case "voidsale": {
       const s = st.sales.find(x => x.id === id);
       confirmBox("Anular venta", `Se eliminará la venta de ${esc(s ? s.label : "")} por ${fmt(s ? s.total : 0)}. Esto no se puede deshacer.`, "Anular", async () => {
-        try { await Store.del("sales/" + id); if (s && s.inv) await applyStock(s.items || [], -1); st.sales = st.sales.filter(x => x.id !== id); closeModal(); renderAll(); toast("Venta anulada"); } catch (err) { writeErr(err); closeModal(); }
+        try { await Store.del("sales/" + id); if (s) logReg("anulacion", { ref: id, label: s.label || "", total: s.total || 0, cash: s.cash || 0, transfer: s.transfer || 0, vendio: s.socio || s.by || "", horaVenta: s.ts || s.at || null, detalle: resumenItems(s.items) }); if (s && s.inv) await applyStock(s.items || [], -1); st.sales = st.sales.filter(x => x.id !== id); closeModal(); renderAll(); toast("Venta anulada"); } catch (err) { writeErr(err); closeModal(); }
       }, true);
       break;
     }
@@ -2765,7 +2804,7 @@ document.addEventListener("click", async e => {
     case "savep": saveProduct(id); break;
     case "delp": {
       const p = prodById(id);
-      confirmBox("Eliminar producto", `¿Quitar ${esc(p ? p.n : "")} de la lista?`, "Eliminar", async () => saveCatalog(st.catalog.filter(x => x.id !== id), "Producto eliminado"), true);
+      confirmBox("Eliminar producto", `¿Quitar ${esc(p ? p.n : "")} de la lista?`, "Eliminar", async () => { if (p) logReg("producto", { pid: id, label: p.n, from: st.stock[id] ? st.stock[id].q : null }); return saveCatalog(st.catalog.filter(x => x.id !== id), "Producto eliminado"); }, true);
       break;
     }
   }
