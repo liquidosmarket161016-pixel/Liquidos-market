@@ -307,6 +307,7 @@ try { const m = localStorage.getItem(LS_ME); if (m && (SOCIOS.includes(m) || ADM
 const isDemo = () => DEMOS.includes(ME);
 const isAdmin = () => !!ME && ADMINS.includes(ME);
 const isSocio = () => !!ME && (SOCIOS.includes(ME) || isAdmin() || ME === "Demo socio");
+const isDueno = () => !!ME && (SOCIOS.includes(ME) || isAdmin()); // socios reales y administrador (sin demo)
 const isEnc = () => !!ME && ENCARGADAS.includes(ME);
 const canCaja = () => isSocio() || isEnc(); // abrir caja, cobrar cualquier cuenta, corregir pedidos
 const needsPin = name => SOCIOS.includes(name) || ADMINS.includes(name) || ENCARGADAS.includes(name);
@@ -2083,18 +2084,20 @@ async function printSale(s, reimpresion) {
   catch (e) { console.error(e); toast("No se pudo imprimir: revisa que XAMPP esté encendido"); }
 }
 function camaraBox() {
-  if (!FB || !isSocio()) return "";
+  if (!FB || !isDueno()) return "";
   const on = camOn();
   return `<div class="box"><h3>Cámara de este equipo</h3>
     <div class="li"><div class="a"><b>${on ? "Activada en este equipo" : "Desactivada"}</b><span class="muted small">${on ? "Toma una foto al iniciar el turno, al cerrar el día, al abrir la gaveta sin venta, al anular, cancelar cuentas, registrar salidas y en los ajustes de conteo (máximo una cada 15 min). Solo la ven los socios en el Registro." : "Actívala solo en el computador del local."}</span></div><button class="linkbtn" data-act="camtoggle">${on ? "Desactivar" : "Activar"}</button></div>
     ${on ? `<button class="btn block" data-act="camtest" style="margin:10px 0">Probar cámara</button>` : ""}</div>`;
 }
 async function camTest() {
+  if (!isDueno()) return;
   openModal(hd("Probar cámara", "Tomando foto…") + `<div class="empty">Tomando foto…</div>`);
   try { const img = await camShot(); openModal(hd("Probar cámara", "Así se ven las fotos") + `<img src="${img}" alt="Prueba" style="width:100%;border-radius:12px;display:block"><p class="muted small">Tamaño: ${Math.round(img.length * .75 / 1024)} KB</p><button class="btn block" data-act="close">Listo</button>`); }
   catch (e) { console.error(e); openModal(hd("Probar cámara") + `<div class="empty">No se pudo usar la cámara: ${esc(e.message || String(e))}.<br>Revisa que Chrome tenga permiso de cámara para esta página.</div><button class="btn block" data-act="close">Cerrar</button>`); }
 }
 async function camToggle() {
+  if (!isDueno()) return;
   try { if (camOn()) { localStorage.removeItem(CAM_KEY); toast("Cámara desactivada en este equipo"); renderAjustes(); return; } } catch (e) {}
   try { localStorage.setItem(CAM_KEY, "1"); } catch (e) {}
   renderAjustes(); camTest();
@@ -2386,7 +2389,7 @@ function renderAjustes() {
   const el = $("#ajustes"); if (!el) return;
   let h = importBox() + impresoraBox() + camaraBox() + toolsHtml() + accesosBox();
   h += `<div class="box"><h3>Contraseñas</h3>${SOCIOS.concat(ADMINS, ENCARGADAS).map(s => `<div class="li"><div class="a"><b>${esc(s)}</b><span class="muted small">${pins[s] ? "Con contraseña" : "Sin contraseña todavía"}</span></div>${s === ME ? `<button class="linkbtn" data-act="mypin">Cambiar la mía</button>` : pins[s] ? `<button class="linkbtn" data-act="resetpin" data-id="${esc(s)}">Restablecer</button>` : ""}</div>`).join("")}</div>`;
-  if (isSocio()) h += `<div class="box"><h3>Registro de movimientos</h3><div class="li"><div class="a"><b>Anulaciones y cambios de inventario</b><span class="muted small">Quién hizo cada cambio, cuándo y qué cambió. Solo lo ven los socios.</span></div><button class="linkbtn" data-act="regver">Ver registro</button></div></div>`;
+  if (isDueno()) h += `<div class="box"><h3>Registro de movimientos</h3><div class="li"><div class="a"><b>Anulaciones y cambios de inventario</b><span class="muted small">Quién hizo cada cambio, cuándo y qué cambió. Solo lo ven los socios.</span></div><button class="linkbtn" data-act="regver">Ver registro</button></div></div>`;
   h += `<div class="box"><h3>Gastos fijos del mes</h3><div class="li"><div class="a"><b class="num">${fmt(metas().g)}</b><span class="muted small">Se usan para calcular la meta de ventas.</span></div><button class="linkbtn" data-act="gastos">Ver o editar</button></div></div>`;
   h += `<div class="box"><h3>Respaldo</h3><div class="muted small" style="padding:6px 0 10px">Descarga TODA la información (ventas, inventario, movimientos, catálogo, cajas) en un archivo de respaldo y una copia en Excel. Guárdalos en un lugar seguro.</div><button class="btn block" data-act="backup" style="margin-bottom:10px">Descargar respaldo completo</button></div>`;
   el.innerHTML = h;
@@ -2410,7 +2413,7 @@ function regLine(r) {
   return `<div class="li"><div class="a"><b>${esc(t)}</b><span class="muted small">${esc(r.day)} ${hora(r.ts)} · <b>${esc(r.by)}</b></span><span class="small">${det}</span>${r.foto ? `<button class="linkbtn" style="display:block;text-align:left;padding:6px 0 0" data-act="regfoto" data-id="${esc(r.foto)}">📷 Ver foto</button>` : ""}</div><b class="num" style="${neg ? "color:#ff8a8a" : ""}">${val}</b></div>`;
 }
 async function regFoto(id) {
-  if (!isSocio()) return;
+  if (!isDueno()) return;
   openModal(hd("Foto", "Cargando…") + `<div class="empty">Cargando…</div>`);
   let f = null; try { f = await getDoc("fotos/" + id); } catch (e) { console.error(e); }
   const back = `<button class="btn block" data-act="regf" data-id="${esc(st._regF || "todo")}" style="margin-top:10px">← Volver al registro</button>`;
@@ -2419,7 +2422,7 @@ async function regFoto(id) {
   openModal(hd(esc(REG_TIPOS[f.tipo] || f.tipo), `${fechaHora(f.ts)} · ${esc(f.by)}`) + `<img src="${f.img}" alt="Foto" style="width:100%;border-radius:12px;display:block">` + back);
 }
 async function regModal(filtro) {
-  if (!isSocio()) return;
+  if (!isDueno()) return;
   if (filtro === undefined || !regCache) { openModal(hd("Registro de movimientos", "Cargando…") + `<div class="empty">Cargando…</div>`); try { regCache = await regLoad(); } catch (e) { console.error(e); closeModal(); toast("No se pudo cargar el registro. Revisa la conexión."); return; } }
   st._regF = filtro || "todo";
   const f = filtro || "todo", list = regCache.filter(r => f === "todo" || r.tipo === f || (f === "ajuste" && r.tipo === "inicial") || (f === "caja" && ["turno", "cierre", "gaveta"].includes(r.tipo)));
