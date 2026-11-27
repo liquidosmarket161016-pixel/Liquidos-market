@@ -416,8 +416,8 @@ function sum(arr, f) { return arr.reduce((a, x) => a + (Number(f(x)) || 0), 0); 
 function groupLines(items) {
   const m = new Map();
   for (const it of items) {
-    const k = it.pid + "|" + (it.v || "") + "|" + (it.by || "");
-    if (!m.has(k)) m.set(k, { key: k, pid: it.pid, n: it.n, v: it.v || "", by: it.by || "", u: it.u || 1, p: it.p, c: it.c, q: 0, ids: [], at: it.at || 0 });
+    const k = it.pid + "|" + (it.v || "") + "|" + (it.by || "") + (it.promo ? "|" + it.promo + "|" + it.p : "");
+    if (!m.has(k)) m.set(k, { key: k, pid: it.pid, n: it.n, v: it.v || "", by: it.by || "", u: it.u || 1, p: it.p, c: it.c, q: 0, ids: [], at: it.at || 0, promo: it.promo || "", pn: it.pn || "" });
     const g = m.get(k); g.q++; g.ids.push(it.id); g.at = Math.min(g.at || it.at, it.at || g.at);
   }
   return [...m.values()].sort((a, b) => (a.at || 0) - (b.at || 0));
@@ -444,7 +444,8 @@ function renderTargets() {
   const on = $("#targets .chip.on"); if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 function renderCats() {
-  $("#tabs").innerHTML = TABS.map(c => `<button class="tab ${!st.q && st.tab === c ? "on" : ""}" data-act="tab" data-id="${esc(c)}">${esc(c)}</button>`).join("");
+  const tabs = ["Promos"].concat(TABS);
+  $("#tabs").innerHTML = tabs.map(c => `<button class="tab ${!st.q && st.tab === c ? "on" : ""}" data-act="tab" data-id="${esc(c)}">${esc(c)}</button>`).join("");
   const showSubs = !st.q && st.tab === "Licor";
   $("#cats").style.display = showSubs ? "" : "none";
   $("#cats").innerHTML = showSubs ? SUBS.map(c => `<button class="cat ${st.sub === c ? "on" : ""}" data-act="cat" data-id="${esc(c)}">${esc(c)}</button>`).join("") : "";
@@ -457,6 +458,7 @@ function stockTag(p) {
 }
 function renderProducts() {
   const q = norm(st.q);
+  if (!q && st.tab === "Promos") { renderPromos(); return; }
   let list = q ? st.catalog.filter(p => norm(p.n).includes(q)) : st.catalog.filter(p => p.cat === st.tab && (st.tab !== "Licor" || p.sub === st.sub));
   const counts = {};
   for (const it of targetItems()) counts[it.pid] = (counts[it.pid] || 0) + (it.u || 1);
@@ -523,6 +525,9 @@ function renderCierre() {
     const M = metas();
     h += `<div class="box"><div class="li"><div class="a"><span class="muted small">Meta del día (para cubrir gastos fijos)</span><b class="num">${fmt(M.dia)}</b></div><div class="a" style="text-align:right"><span class="muted small">Llevas</span><b class="num">${Math.round(total / M.dia * 100)}%</b></div></div>${progressBar(total, M.dia)}<div style="height:8px"></div></div>`;
   }
+  { const pm = {}; for (const sl of sales) for (const [k, g] of Object.entries(sl.promos || {})) { const x = pm[k] || (pm[k] = { n: g.n, q: 0, t: 0 }); x.q += g.q; x.t += g.t; }
+    const ks = Object.keys(pm).sort();
+    if (ks.length) h += `<div class="box"><h3>Promos vendidas</h3>${ks.map(k => `<div class="li"><div class="a"><b>${esc(pm[k].n)}</b><span class="muted small">${pm[k].q} ${pm[k].q === 1 ? "vez" : "veces"}</span></div><b class="num">${fmt(pm[k].t)}</b></div>`).join("")}</div>`; }
   if (isToday && turno && turno.socio) h += gastosBox(canCaja() && !turno.cierre) + (turno.cierre ? cierreBox(turno.cierre) : (canCaja() ? `<div style="padding:12px 14px 0"><button class="btn pri block" data-act="czopen">Cerrar el día</button></div>` : ""));
   h += `<div style="padding:12px 14px 0" class="row"><button class="btn pri" data-act="copy">Copiar para WhatsApp</button><button class="btn" data-act="xlsday" ${sales.length ? "" : "disabled"}>Descargar Excel</button></div>`;
   // pedidos por persona
@@ -824,6 +829,13 @@ async function removeOne(key) {
   if (!canCaja()) return;
   const g = groupLines(targetItems()).find(g => g.key === key); if (!g) return;
   const id = g.ids[g.ids.length - 1];
+  if (g.promo) {
+    const it = targetItems().find(i => i.id === id), ids = new Set(targetItems().filter(i => i.pg && i.pg === it.pg).map(i => i.id));
+    if (st.target === "mostrador") { st.cart = st.cart.filter(i => !ids.has(i.id)); renderAll(); toast("Se quitó la promo completa"); return; }
+    const prev = st.items; st.items = st.items.filter(i => !ids.has(i.id)); renderAll();
+    try { for (const x of ids) await Store.del("items/" + x); toast("Se quitó la promo completa"); } catch (e) { st.items = prev; renderAll(); writeErr(e); }
+    return;
+  }
   if (st.target === "mostrador") { st.cart = st.cart.filter(i => i.id !== id); renderAll(); return; }
   const prev = st.items; st.items = st.items.filter(i => i.id !== id); renderAll();
   try { await Store.del("items/" + id); } catch (e) { st.items = prev; renderAll(); writeErr(e); }
@@ -841,7 +853,7 @@ function sheetHtml() {
   let h = hd(esc(targetName()), sub);
   if (!lines.length) h += `<div class="empty">Sin productos todavía.</div>`;
   const soc = canCaja();
-  h += lines.map(g => `<div class="li"><div class="a" style="flex:1"><b>${esc(vlabel(g.n, g.v))}</b><span class="muted small num">${fmt(g.p)} c/u · ${fmt(g.p * g.q)}${g.by ? " · " + esc(g.by) : ""}</span></div><div class="qty">${soc ? `<button data-act="minus" data-id="${esc(g.key)}">−</button>` : ""}<b class="num">${g.q}</b><button data-act="plus" data-id="${esc(g.key)}">+</button></div></div>`).join("");
+  h += lines.map(g => `<div class="li"><div class="a" style="flex:1"><b>${esc(vlabel(g.n, g.v))}</b>${g.promo ? `<span class="small" style="color:#FFD400">🏷️ ${esc(g.pn)}</span>` : ""}<span class="muted small num">${g.promo && !g.p ? "Gratis" : fmt(g.p) + " c/u · " + fmt(g.p * g.q)}${g.by ? " · " + esc(g.by) : ""}</span></div><div class="qty">${soc ? `<button data-act="minus" data-id="${esc(g.key)}">−</button>` : ""}<b class="num">${g.q}</b>${g.promo ? "" : `<button data-act="plus" data-id="${esc(g.key)}">+</button>`}</div></div>`).join("");
   h += `<div class="total"><span class="muted">Total</span><b class="num">${fmt(sum(its, i => i.p))}</b></div>`;
   if (!soc && t !== "mostrador") {
     const caja = st.turno && st.turno.socio;
@@ -915,9 +927,10 @@ async function confirmPay() {
   else if (p.method === "tr") transfer = p.total;
   else { cash = digits(($("#cashPart") || {}).value); if (!cash || cash >= p.total) { toast("En mixto escribe cuánto pagan en efectivo (menos del total)"); return; } transfer = p.total - cash; }
   const btn = $("#payOk"); btn.disabled = true; btn.textContent = "Guardando…";
-  const lines = groupLines(p.items).map(g => { const pr = prodById(g.pid); return { pid: g.pid, cat: pr ? pr.cat : "", n: g.n, v: g.v, by: g.by, q: g.q, p: g.p, c: g.c }; });
+  const lines = groupLines(p.items).map(g => { const pr = prodById(g.pid); const l = { pid: g.pid, cat: pr ? pr.cat : "", n: g.n, v: g.v, by: g.by, q: g.q, p: g.p, c: g.c }; if (g.promo) { l.promo = g.promo; l.pn = g.pn; } return l; });
   const now = Date.now();
   const sale = { inv: true, day: dayKey(now), ts: now, socio: ME, caja: st.turno.socio, label: p.label, items: lines, total: p.total, cost: p.cost, cash, transfer, received: received || 0, change: received ? received - p.total : 0 };
+  const prm = promosDeVenta(p.items); if (Object.keys(prm).length) sale.promos = prm;
   const saleId = Store.newId();
   try { await Store.set("sales/" + saleId, sale); applyStock(lines, 1); }
   catch (e) { btn.disabled = false; btn.textContent = "Registrar venta"; writeErr(e); return; }
@@ -1101,10 +1114,11 @@ const wdOf = k => kd(k).getDay();
 let unsubToday = null, histBusy = false, hist = null;
 const rollTimers = {}, rollLast = {};
 function summarize(day, sales) {
-  const s = { day, wd: wdOf(day), total: 0, cash: 0, transfer: 0, cost: 0, n: sales.length, units: 0, products: {}, people: {}, hours: {}, cats: {} };
+  const s = { day, wd: wdOf(day), total: 0, cash: 0, transfer: 0, cost: 0, n: sales.length, units: 0, products: {}, people: {}, hours: {}, cats: {}, promos: {} };
   for (const sale of sales) {
     s.total += sale.total || 0; s.cash += sale.cash || 0; s.transfer += sale.transfer || 0; s.cost += sale.cost || 0;
     const h = new Date(sale.ts).getHours(); s.hours[h] = (s.hours[h] || 0) + (sale.total || 0);
+    for (const [k, g] of Object.entries(sale.promos || {})) { const x = s.promos[k] || (s.promos[k] = { n: g.n, q: 0, t: 0 }); x.q += g.q; x.t += g.t; }
     for (const it of (sale.items || [])) {
       const pr = it.pid ? prodById(it.pid) : st.catalog.find(x => x.n === it.n);
       const pid = it.pid || (pr ? pr.id : ""), cat = it.cat || (pr ? pr.cat : "Otros");
@@ -2140,6 +2154,122 @@ async function loConfirm() {
   } catch (e) { writeErr(e); }
 }
 
+
+/* ---------- PROMOS (autorizadas por los socios) ---------- */
+// Cada promo se descompone en sus productos: así el inventario se descuenta bien y el precio de la promo
+// se reparte entre los productos que se cobran (los regalos van en $0).
+// Para cambiar las promos: agregar una campaña nueva a CAMPANAS con sus fechas (las autorizan los socios).
+const CAMPANAS = [];
+const PROMO_CFG = {
+  nombre: "Black Friday", desde: "2026-11-27", hasta: "2026-11-29",
+  lista: [
+    { id: "bf01", n: "Aguardiente Amarillo Litro + Electrolit gratis", p: 80000, items: [{ pid: "p004" }, { pid: "g014", gift: 1 }] },
+    { id: "bf02", n: "Garrafón + gaseosa 1,5 L gratis", choose: [
+      { l: "Garrafón Aguardiente Amarillo + Quatro 1,5 L", p: 130000, items: [{ pid: "p002" }, { pid: "g006", gift: 1 }] },
+      { l: "Garrafón Aguardiente Blanco Tapa Azul + Quatro 1,5 L", p: 130000, items: [{ pid: "p010" }, { pid: "g006", gift: 1 }] },
+      { l: "Garrafón Aguardiente Blanco Tapa Roja + Quatro 1,5 L", p: 130000, items: [{ pid: "p011" }, { pid: "g006", gift: 1 }] },
+      { l: "Garrafón Ron Esencial + Coca-Cola 1,5 L", p: 125000, items: [{ pid: "p043" }, { pid: "g002", gift: 1 }] }] },
+    { id: "bf03", n: "2 canecas Aguardiente Blanco", choose: [
+      { l: "2 Tapa Azul", p: 58000, items: [{ pid: "p008" }, { pid: "p008" }] },
+      { l: "2 Tapa Roja", p: 58000, items: [{ pid: "p009" }, { pid: "p009" }] },
+      { l: "1 Tapa Azul + 1 Tapa Roja", p: 58000, items: [{ pid: "p008" }, { pid: "p009" }] }] },
+    { id: "bf04", n: "2 canecas Aguardiente Amarillo", p: 62000, items: [{ pid: "p005" }, { pid: "p005" }] },
+    { id: "bf05", n: "Whisky o tequila + gaseosa 1,5 L gratis", dyn: "botella" },
+    { id: "bf06", n: "2 sixpacks Stella Artois", p: 54000, items: [{ pid: "p074", alt: 1 }, { pid: "p074", alt: 1 }] },
+    { id: "bf07", n: "Sixpack Budweiser + sixpack Michelob", p: 33000, items: [{ pid: "p067", alt: 1 }, { pid: "p061", alt: 1 }] },
+    { id: "bf08", n: "Sixpack nacional", choose: [
+      { l: "Andina Dorada", p: 17000, items: [{ pid: "p079", alt: 1 }] },
+      { l: "Andina Refajo", p: 17000, items: [{ pid: "p080", alt: 1 }] },
+      { l: "Tecate", p: 17000, items: [{ pid: "p082", alt: 1 }] },
+      { l: "Miller", p: 17000, items: [{ pid: "p083", alt: 1 }] }] },
+    { id: "bf09", n: "Vaso michelado gratis", sub: "Con 2 cervezas premium o un sixpack (Corona, Stella, Heineken, Modelo)", p: 0, items: [{ pid: "nmw778mbactrs9a", gift: 1 }], vaso: true },
+    { id: "bf10", n: "Coctel Like 3 x", p: 16000, items: [{ pid: "nmwbbe8dl1v0r9u" }, { pid: "nmwbbe8dl1v0r9u" }, { pid: "nmwbbe8dl1v0r9u" }] },
+    { id: "bf11", n: "Coctel Granizado 2 x", p: 18000, items: [{ pid: "nmw7c94ir4en1mb" }, { pid: "nmw7c94ir4en1mb" }] },
+    { id: "bf12", n: "Los Cuates 269 ml 3 x", p: 15000, items: [{ pid: "p085" }, { pid: "p085" }, { pid: "p085" }] },
+    { id: "bf13", n: "Vino + Ferrero Rocher x3", choose: [
+      { l: "Vino Gato Negro + Ferrero Rocher x3", p: 46000, items: [{ pid: "p054" }, { pid: "c069" }] },
+      { l: "Vino Lambrusco + Ferrero Rocher x3", p: 46000, items: [{ pid: "p055" }, { pid: "c069" }] }] },
+    { id: "bf14", n: "Agua Brisa con gas 2 x", p: 4500, items: [{ pid: "g023" }, { pid: "g023" }] },
+    { id: "bf15", n: "Combo antojo dulce", sub: "Chocolatina Jet + Nucita + Festival", p: 3000, items: [{ pid: "c074" }, { pid: "c083" }, { pid: "c082" }] }
+  ]
+};
+CAMPANAS.push(PROMO_CFG);
+const PREMIUM = ["p068", "p074", "p075", "p071"]; // Corona, Stella, Heineken, Modelo
+// en pruebas se ve la campaña más reciente aunque no esté vigente, para poder revisarla antes
+const campanaActiva = () => CAMPANAS.find(c => st.today >= c.desde && st.today <= c.hasta) || (ENV === "pruebas" ? CAMPANAS[CAMPANAS.length - 1] : null) || null;
+const promosActivas = () => !!campanaActiva();
+const MESES_P = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const fechaCampana = c => { const a = c.desde.split("-"), b = c.hasta.split("-"); return a[1] === b[1] ? `del ${+a[2]} al ${+b[2]} de ${MESES_P[+b[1] - 1]}` : `del ${+a[2]} de ${MESES_P[+a[1] - 1]} al ${+b[2]} de ${MESES_P[+b[1] - 1]}`; };
+function promoOpciones(def) {
+  if (def.dyn === "botella") return st.catalog.filter(p => (p.sub === "Whisky" || p.sub === "Tequila") && !/crema/i.test(p.n)).sort((a, b) => a.p - b.p)
+    .map(p => p.sub === "Whisky" ? { l: p.n + " + Soda Bretaña 1,5 L", p: p.p, items: [{ pid: p.id }, { pid: "g010", gift: 1 }] } : { l: p.n + " + Quatro 1,5 L", p: p.p, items: [{ pid: p.id }, { pid: "g006", gift: 1 }] });
+  return def.choose || null;
+}
+function precioNormal(items) { return sum(items, x => { const pr = prodById(x.pid); return pr ? (x.alt && pr.alt ? pr.alt.p : pr.p) : 0; }); }
+function promoRango(def) {
+  const ops = promoOpciones(def);
+  if (!ops) return { p: def.p, antes: precioNormal(def.items) };
+  const ps = ops.map(o => o.p), an = ops.map(o => precioNormal(o.items));
+  return { p: Math.min(...ps), pMax: Math.max(...ps), antes: Math.max(...an), varios: ops.length > 1 };
+}
+function renderPromos() {
+  const C = campanaActiva();
+  if (!C) { $("#plist").innerHTML = `<div class="empty" style="padding:40px 20px">🏷️ <b>No hay promos disponibles por ahora.</b><br><span class="muted small">Cuando los socios autoricen las promos de la semana, aparecerán aquí.</span></div>`; return; }
+  const counts = {}; for (const it of targetItems()) if (it.promo) { counts[it.promo] = counts[it.promo] || new Set(); counts[it.promo].add(it.pg); }
+  $("#plist").innerHTML = `<div class="note" style="margin:0 0 8px">🏷️ <b>${esc(C.nombre)}</b> · válidas ${fechaCampana(C)}${ENV === "pruebas" && !(st.today >= C.desde && st.today <= C.hasta) ? " (en pruebas se ven antes de tiempo)" : ""}. Se descuentan del inventario producto por producto.</div>` +
+    C.lista.map(def => {
+      const r = promoRango(def), n = counts[def.id] ? counts[def.id].size : 0;
+      let sub = def.sub;
+      if (!sub && def.items) { const m = new Map(); for (const x of def.items) { const pr = prodById(x.pid), k = x.pid + (x.alt ? "a" : "") + (x.gift ? "g" : ""); const lbl = pr ? (x.alt && pr.alt ? pr.alt.l + " " : "") + shortName(pr) + (x.gift ? " (gratis)" : "") : "producto no encontrado"; const e = m.get(k) || { l: lbl, q: 0 }; e.q++; m.set(k, e); } sub = [...m.values()].map(e => (e.q > 1 ? e.q + " × " : "") + e.l).join(" + "); }
+      if (!sub) sub = def.dyn ? "Elige la botella" : "Elige la opción";
+      const precio = def.vaso ? "Gratis" : (r.varios && r.p !== r.pMax ? "desde " + fmt(r.p) : def.dyn ? "Precio de la botella" : fmt(r.p));
+      return `<div class="prow"><button class="pmain" data-act="promo" data-id="${def.id}">${n ? `<span class="badge num">${n}</span>` : ""}
+        <span class="pn">${esc(def.n)}<br><span class="muted small">${esc(sub)}</span></span>
+        <span class="pp num" style="text-align:right">${precio}${!def.dyn && !def.vaso && r.antes > r.p ? `<br><s class="muted small">${fmt(r.antes)}</s>` : ""}</span></button></div>`;
+    }).join("");
+}
+function promoPick(id) {
+  const C = campanaActiva(), def = C && C.lista.find(x => x.id === id); if (!def) { toast("Esa promo ya no está vigente"); return; }
+  const ops = promoOpciones(def);
+  if (!ops) { addPromo(def, def); return; }
+  openModal(hd(def.n, "Elige la opción") + ops.map((o, i) => { const an = precioNormal(o.items), agot = o.items.some(x => st.stock[x.pid] && st.stock[x.pid].q <= 0);
+    return `<button class="li" style="width:100%;text-align:left" data-act="promoop" data-id="${def.id}|${i}"><div class="a"><b>${esc(o.l)}</b>${agot ? '<span class="tag v">AGOTADO</span>' : ""}</div><div style="text-align:right"><b class="num">${fmt(o.p)}</b>${an > o.p ? `<br><s class="muted small num">${fmt(an)}</s>` : ""}</div></button>`; }).join("") +
+    `<button class="btn block" data-act="close" style="margin-top:10px">Cancelar</button>`);
+}
+function promoPickOpt(key) {
+  const [id, i] = key.split("|"), C = campanaActiva(), def = C && C.lista.find(x => x.id === id); if (!def) return;
+  const o = promoOpciones(def)[Number(i)]; if (!o) return;
+  closeModal(); addPromo(def, o);
+}
+function vasosPermitidos() {
+  let singles = 0, six = 0, vasos = new Set();
+  for (const it of targetItems()) {
+    if (PREMIUM.includes(it.pid)) { const pr = prodById(it.pid); if (pr && pr.alt && it.v === pr.alt.l) six++; else singles++; }
+    if (it.promo === "bf09") vasos.add(it.pg);
+  }
+  return Math.floor(singles / 2) + six - vasos.size;
+}
+async function addPromo(def, op) {
+  if (!ME) { whoModal(); return; }
+  if (def.vaso && vasosPermitidos() <= 0) { toast("Para el vaso gratis primero agrega 2 cervezas premium o un sixpack (Corona, Stella, Heineken o Modelo)"); return; }
+  const lines = op.items.map(x => { const pr = prodById(x.pid); if (!pr) return null; const a = x.alt && pr.alt;
+    return { pid: pr.id, n: pr.n, v: a ? a.l : (pr.ml || ""), u: a ? (a.u || 1) : 1, normal: a ? a.p : pr.p, c: a ? (a.c || 0) : pr.c, gift: !!x.gift }; });
+  if (lines.some(l => !l)) { toast("Un producto de esta promo ya no está en el catálogo. Avísale a un socio."); return; }
+  // reparte el precio de la promo entre los productos que se cobran (múltiplos de $50); el último absorbe la diferencia
+  const pay = lines.filter(l => !l.gift), base = sum(pay, l => l.normal) || 1;
+  let rest = op.p;
+  pay.forEach((l, i) => { l.p = i === pay.length - 1 ? rest : Math.round(op.p * l.normal / base / 50) * 50; rest -= l.p; });
+  lines.filter(l => l.gift).forEach(l => { l.p = 0; });
+  const pg = Store.newId(), at = Date.now();
+  for (const l of lines) await addRaw({ pid: l.pid, n: l.n, v: l.v, u: l.u, p: l.p, c: l.c, by: ME, at, promo: def.id, pn: def.n, pg });
+  toast(`🏷️ ${def.n} → ${targetName()}`);
+}
+function promosDeVenta(items) {
+  const m = {};
+  for (const it of items) if (it.promo) { const g = m[it.promo] || (m[it.promo] = { n: it.pn || it.promo, pgs: new Set(), t: 0 }); g.pgs.add(it.pg); g.t += it.p || 0; }
+  const o = {}; for (const [k, g] of Object.entries(m)) o[k] = { n: g.n, q: g.pgs.size, t: g.t }; return o;
+}
+
 /* ---------- Ajustes ---------- */
 function toolsHtml() {
   let h = "";
@@ -2541,6 +2671,8 @@ document.addEventListener("click", async e => {
     case "cqnew": newQuote(); break;
     case "czopen": closeDayModal(); break;
     case "gasto": gastoModal(); break;
+    case "promo": promoPick(id); break;
+    case "promoop": promoPickOpt(id); break;
     case "printlast": if (lastSale) { printSale(lastSale, true); toast("Imprimiendo recibo…"); const b = e.target.closest("button"); if (b) { b.disabled = true; b.textContent = "Recibo enviado a la impresora"; } } break;
     case "hdrcajon": if (isSocio()) bridge({ accion: "cajon" }).then(() => toast("Gaveta abierta")).catch(() => toast("No se pudo abrir: revisa XAMPP")); break;
     case "look": if (lo) { lo.estado = "ok"; loDraw(); } break;
