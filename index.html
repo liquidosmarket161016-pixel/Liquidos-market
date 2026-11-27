@@ -247,7 +247,7 @@ textarea{width:100%;min-height:200px;background:var(--card2);color:var(--tx);bor
   <section class="view" id="v-inventario">
     <div class="sec" style="padding-bottom:8px"><div class="h1">Inventario</div><div class="muted small">Cada venta descuenta sola. Registra lo que llega y haz conteos.</div></div>
     <div id="invk"></div>
-    <div class="row" style="padding:12px 14px 4px"><button class="btn pri" data-act="entrada">+ Entrada</button><button class="btn" data-act="newp">+ Producto</button><button class="btn" data-act="xlsinv" style="flex:.6">Excel</button></div>
+    <div class="row" style="padding:12px 14px 4px;flex-wrap:wrap"><button class="btn pri" data-act="entrada" style="flex:1 1 40%">+ Entrada</button><button class="btn" data-act="salida" style="flex:1 1 40%">− Salida</button><button class="btn" data-act="newp" style="flex:1 1 40%">+ Producto</button><button class="btn" data-act="xlsinv" style="flex:1 1 40%">Excel</button></div>
     <div class="searchbar"><input id="q3" type="search" placeholder="Buscar producto…" autocomplete="off"></div>
     <div class="cats" id="invchips"></div>
     <div id="invlist"></div>
@@ -1440,7 +1440,7 @@ async function logReg(tipo, d) {
   const doc = Object.assign({ ts: now, day: dayKey(now), tipo, by: ME || "(sin usuario)", cuenta: (typeof fbUser !== "undefined" && fbUser && fbUser.email) || "" }, d);
   try { await Store.set("registro/" + Store.newId(), doc); } catch (e) { console.error(e); }
 }
-const REG_TIPOS = { anulacion: "Venta anulada", cuenta: "Cuenta cancelada", ajuste: "Ajuste de conteo", inicial: "Conteo inicial", entrada: "Entrada de mercancía", producto: "Producto eliminado" };
+const REG_TIPOS = { anulacion: "Venta anulada", cuenta: "Cuenta cancelada", ajuste: "Ajuste de conteo", inicial: "Conteo inicial", entrada: "Entrada de mercancía", salida: "Salida de inventario", producto: "Producto eliminado" };
 const resumenItems = its => (its || []).map(i => `${i.q > 1 ? i.q + "× " : ""}${i.n || ""}${i.v ? " (" + i.v + ")" : ""}`).join(", ");
 async function applyStock(lines, sign) {
   for (const l of lines) {
@@ -1489,10 +1489,10 @@ async function invProduct(pid) {
       ${marginRows(p).map(r => `<div class="li"><div class="a"><span class="muted small">${esc(r.l)} · costo ${fmt(r.cost)}</span><b class="num">${fmt(r.cur)} · margen ${pct(r.m)}${r.low ? ` <span class="tag v">META ${pct(r.t)}</span>` : ""}</b></div>${r.low ? `<button class="linkbtn" data-act="applysug" data-id="${pid}|${r.which}">Subir a ${fmt(r.sug)}</button>` : ""}</div>`).join("")}
 
       <div class="li"><div class="a" style="flex:1"><span class="muted small">Avisarme cuando queden (mínimo)</span><input id="inv_min" inputmode="numeric" placeholder="Automático: menos de 7 días" value="${x.min != null ? x.min : ""}" style="margin-top:6px"></div></div>
-      <div class="row" style="margin-top:12px"><button class="btn pri" data-act="entrada" data-id="${pid}">+ Entrada</button><button class="btn" data-act="ajuste" data-id="${pid}">${s.q == null ? "Hacer conteo" : "Ajustar conteo"}</button></div>
+      <div class="row" style="margin-top:12px"><button class="btn pri" data-act="entrada" data-id="${pid}">+ Entrada</button><button class="btn" data-act="salida" data-id="${pid}">− Salida</button><button class="btn" data-act="ajuste" data-id="${pid}">${s.q == null ? "Hacer conteo" : "Ajustar conteo"}</button></div>
       ${FEAT_BARCODE ? `<div class="li"><div class="a"><span class="muted small">Código de barras</span><b class="num">${(p.bc || []).length ? esc(p.bc.join(", ")) : "Sin código"}${p.alt && (p.alt.bc || []).length ? `<br><span class="muted small">${esc(p.alt.l)}: ${esc(p.alt.bc.join(", "))}</span>` : ""}</b></div><button class="linkbtn" data-act="bcmodal" data-id="${pid}">Asignar</button></div>` : ""}
       <button class="btn block ghost" style="margin-top:10px" data-act="editp" data-id="${pid}">Editar producto y precio</button>
-      ${movs && movs.length ? `<h3 class="muted small" style="margin:16px 0 4px;letter-spacing:.06em">ÚLTIMOS MOVIMIENTOS</h3>${movs.slice(0, 6).map(m => `<div class="li"><div class="a"><b>${m.type === "entrada" ? "Entrada" : m.type === "ajuste" ? "Ajuste" : "Inicial"}</b><span class="muted small">${esc(m.day)} · ${esc(m.by || "")}${m.note ? " · " + esc(m.note) : ""}</span></div><b class="num">${m.type === "ajuste" ? `${fq(m.from)} → ${fq(m.to)}` : "+" + fq(m.q)}</b></div>`).join("")}` : ""}`);
+      ${movs && movs.length ? `<h3 class="muted small" style="margin:16px 0 4px;letter-spacing:.06em">ÚLTIMOS MOVIMIENTOS</h3>${movs.slice(0, 6).map(m => `<div class="li"><div class="a"><b>${m.type === "entrada" ? "Entrada" : m.type === "ajuste" ? "Ajuste" : m.type === "salida" ? "Salida · " + esc(m.motivo || "") : "Inicial"}</b><span class="muted small">${esc(m.day)} · ${esc(m.by || "")}${m.note ? " · " + esc(m.note) : ""}</span></div><b class="num">${m.type === "ajuste" ? `${fq(m.from)} → ${fq(m.to)}` : m.type === "salida" ? "−" + fq(m.q) : "+" + fq(m.q)}</b></div>`).join("")}` : ""}`);
     $("#inv_min").addEventListener("change", async e => {
       const raw = e.target.value.trim(), cur = st.stock[pid];
       if (!cur) { toast("Primero haz el conteo de este producto"); e.target.value = ""; return; }
@@ -1530,6 +1530,47 @@ function entradaModal(pid) {
     };
     s.addEventListener("input", res); s.focus();
   }
+}
+/* ---------- salida de inventario (sin venta) ---------- */
+const SALIDA_MOT = ["Consumo personal", "Insumo michelada", "Cortesía", "Daño", "Vencido"];
+function salidaModal(pid) {
+  if (!canCaja()) return;
+  const p = pid ? prodById(pid) : null;
+  const pick = p ? `<div class="li"><div class="a"><span class="muted small">Producto</span><b>${esc(p.n)}</b><span class="muted small">Hay ${st.stock[p.id] ? fq(st.stock[p.id].q) + " " + invUnit(p) : "sin conteo"}</span></div><button class="linkbtn" data-act="salida">Cambiar</button></div>` :
+    `<div class="field"><label>Producto</label><input id="sal_s" placeholder="Busca el producto…" autocomplete="off"></div><div id="sal_res"></div>`;
+  const beer = p && p.sub === "Cervezas", cig = p && p.cat === "Cigarrería";
+  st._salMot = null;
+  openModal(hd("Salida de inventario", "Producto que sale sin venderse") + pick + (p ? `
+    <div class="field"><label>¿Por qué sale?</label><div class="quick" id="sal_m">${SALIDA_MOT.map(m => `<button data-act="salmot" data-id="${esc(m)}">${esc(m)}</button>`).join("")}</div></div>
+    <div class="field"><label>Cantidad (${beer ? "en unidades" : cig ? "en medias" : "unidades"})</label><input id="sal_q" inputmode="decimal" placeholder="0" value="1"></div>
+    <div class="field"><label>Nota (opcional)</label><input id="sal_n" placeholder="Ej: se rompió al descargar"></div>
+    <div class="small" id="sal_err" style="color:#ff8a8a;min-height:16px;font-weight:600"></div>
+    <div class="row"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="salsave" data-id="${p.id}">Registrar salida</button></div>` : ""));
+  const s = $("#sal_s");
+  if (s) {
+    const res = () => {
+      const q = norm(s.value);
+      const list = q.length < 2 ? [] : st.catalog.filter(x => norm(x.n).includes(q)).slice(0, 8);
+      $("#sal_res").innerHTML = list.map(x => `<button class="li" style="width:100%;text-align:left" data-act="salida" data-id="${x.id}"><div class="a"><b>${esc(x.n)}</b><span class="muted small">${esc(x.cat)}</span></div><span class="muted small num">${st.stock[x.id] ? fq(st.stock[x.id].q) + " " + invUnit(x) : "sin conteo"}</span></button>`).join("") + (q.length >= 2 && !list.length ? `<div class="empty">No se encontró.</div>` : "");
+    };
+    s.addEventListener("input", res); s.focus();
+  }
+}
+async function saveSalida(pid) {
+  const p = prodById(pid); if (!p) return;
+  const mot = st._salMot, raw = $("#sal_q").value.replace(",", ".").trim(), qn = r2(Number(raw)), note = $("#sal_n").value.trim();
+  if (!mot) { $("#sal_err").textContent = "Elige por qué sale"; return; }
+  if (!raw || isNaN(qn) || qn <= 0) { $("#sal_err").textContent = "Escribe la cantidad"; return; }
+  const cur = st.stock[pid];
+  if (!cur) { $("#sal_err").textContent = "Este producto no tiene conteo todavía"; return; }
+  const next = Object.assign({}, cur, { q: r2(cur.q - qn), at: Date.now(), by: ME });
+  try {
+    await Store.set("stock/" + pid, next); st.stock[pid] = next;
+    await logMov({ type: "salida", pid, n: p.n, q: qn, c: p.c, motivo: mot, note });
+    logReg("salida", { pid, label: p.n, from: cur.q, to: next.q, dif: -qn, valor: -Math.round(qn * (p.c || 0)), motivo: mot, nota: note });
+    toast(`−${fq(qn)} ${p.n} (${mot}). Quedan ${fq(next.q)}`);
+    closeModal(); renderAll();
+  } catch (e) { writeErr(e); }
 }
 async function saveEntrada(pid, more) {
   const p = prodById(pid); if (!p) return;
@@ -1586,7 +1627,7 @@ async function excelInv(btn) {
     let movs = [];
     if (Store.db) { const sn = await Store.db.collection("movs").orderBy("ts", "desc").limit(1000).get(); movs = sn.docs.map(d => d.data()); }
     else movs = [...Store._c("movs").values()].sort((a, b) => b.ts - a.ts);
-    const mr = [["Fecha", "Hora", "Tipo", "Producto", "Cantidad", "Antes", "Después", "Costo", "Nota", "Quién"]].concat(movs.map(m => [m.day, hora(m.ts), m.type, m.n, m.q, m.from != null ? m.from : "", m.to != null ? m.to : "", m.c || "", m.note || "", m.by || ""]));
+    const mr = [["Fecha", "Hora", "Tipo", "Producto", "Cantidad", "Antes", "Después", "Costo", "Nota", "Quién"]].concat(movs.map(m => [m.day, hora(m.ts), m.type, m.n, m.q, m.from != null ? m.from : "", m.to != null ? m.to : "", m.c || "", [m.motivo, m.note].filter(Boolean).join(" · "), m.by || ""]));
     X.utils.book_append_sheet(wb, sheet(X, mr, [7], [12, 10, 10, 36, 10, 9, 9, 12, 26, 12]), "Movimientos");
     await saveXlsx(X, wb, `Liquidos-Market-inventario-${st.today}.xlsx`, btn);
   } catch (e) { console.error(e); toast("No se pudo preparar el Excel. Revisa la conexión."); }
@@ -2040,7 +2081,7 @@ async function backupAll(btn) {
     for (const p of cat) { const x = data.stock[p.id]; inv.push([p.n, p.cat, p.sub || "", x && x.q != null ? x.q : "", invUnit(p), p.c, p.p, x && x.q > 0 ? x.q * p.c : 0, (p.bc || []).join(", ")]); }
     X.utils.book_append_sheet(wb, sheet(X, inv, [5, 6, 7], [36, 16, 14, 11, 8, 12, 12, 14, 18]), "Inventario");
     const movs = Object.values(data.movs).sort((a, b) => a.ts - b.ts);
-    X.utils.book_append_sheet(wb, sheet(X, [["Fecha", "Hora", "Tipo", "Producto", "Cantidad", "Antes", "Después", "Costo", "Nota", "Quién"]].concat(movs.map(m => [m.day, hora(m.ts), m.type, m.n, m.q, m.from != null ? m.from : "", m.to != null ? m.to : "", m.c || "", m.note || "", m.by || ""])), [7], [12, 10, 10, 36, 10, 9, 9, 12, 26, 12]), "Movimientos");
+    X.utils.book_append_sheet(wb, sheet(X, [["Fecha", "Hora", "Tipo", "Producto", "Cantidad", "Antes", "Después", "Costo", "Nota", "Quién"]].concat(movs.map(m => [m.day, hora(m.ts), m.type, m.n, m.q, m.from != null ? m.from : "", m.to != null ? m.to : "", m.c || "", [m.motivo, m.note].filter(Boolean).join(" · "), m.by || ""])), [7], [12, 10, 10, 36, 10, 9, 9, 12, 26, 12]), "Movimientos");
     const dias = Object.entries(data.dias).sort().map(([k, x]) => [k, x.n || 0, x.total || 0, x.cash || 0, x.transfer || 0, x.cost || 0, (x.total || 0) - (x.cost || 0)]);
     X.utils.book_append_sheet(wb, sheet(X, [["Día", "Ventas", "Total", "Efectivo", "Transferencia", "Costo", "Ganancia"]].concat(dias), [2, 3, 4, 5, 6], [12, 9, 13, 13, 14, 13, 13]), "Resumen por día");
     const turnos = Object.entries(data.turnos).sort().map(([k, t]) => [k, t.socio || "", t.base || 0, t.at ? hora(t.at) : ""]);
@@ -2309,7 +2350,7 @@ function regLine(r) {
   if (r.tipo === "anulacion") { det = `${esc(r.label)}${r.vendio ? " · la vendió " + esc(r.vendio) : ""}${r.horaVenta ? " a las " + hora(r.horaVenta) : ""}${r.detalle ? "<br>" + esc(r.detalle) : ""}`; val = fmt(r.total); }
   else if (r.tipo === "cuenta") { det = `${esc(r.label)}${r.detalle ? "<br>" + esc(r.detalle) : ""}`; val = fmt(r.total); }
   else if (r.tipo === "producto") { det = esc(r.label) + (r.from != null ? ` · tenía ${fq(r.from)}` : ""); }
-  else { det = `${esc(r.label)} · ${r.from != null ? fq(r.from) + " → " : ""}${fq(r.to)}${r.nota ? " · " + esc(r.nota) : ""}`; val = (r.dif > 0 ? "+" : "") + fq(r.dif); }
+  else { det = `${esc(r.label)}${r.motivo ? " · " + esc(r.motivo) : ""} · ${r.from != null ? fq(r.from) + " → " : ""}${fq(r.to)}${r.nota ? " · " + esc(r.nota) : ""}`; val = (r.dif > 0 ? "+" : "") + fq(r.dif); }
   return `<div class="li"><div class="a"><b>${esc(t)}</b><span class="muted small">${esc(r.day)} ${hora(r.ts)} · <b>${esc(r.by)}</b></span><span class="small">${det}</span></div><b class="num" style="${neg ? "color:#ff8a8a" : ""}">${val}</b></div>`;
 }
 async function regModal(filtro) {
@@ -2318,7 +2359,7 @@ async function regModal(filtro) {
   const f = filtro || "todo", list = regCache.filter(r => f === "todo" || r.tipo === f || (f === "ajuste" && r.tipo === "inicial"));
   const chip = (k, l) => `<button class="${f === k ? "on" : ""}" data-act="regf" data-id="${k}">${l}</button>`;
   openModal(hd("Registro de movimientos", "Solo lo ven los socios") + `
-    <div class="quick" style="flex-wrap:wrap">${chip("todo", "Todo")}${chip("anulacion", "Anulaciones")}${chip("cuenta", "Cuentas canceladas")}${chip("ajuste", "Ajustes")}${chip("entrada", "Entradas")}${chip("producto", "Productos eliminados")}</div>
+    <div class="quick" style="flex-wrap:wrap">${chip("todo", "Todo")}${chip("anulacion", "Anulaciones")}${chip("cuenta", "Cuentas canceladas")}${chip("ajuste", "Ajustes")}${chip("entrada", "Entradas")}${chip("salida", "Salidas")}${chip("producto", "Productos eliminados")}</div>
     ${list.length ? list.slice(0, 200).map(regLine).join("") : `<div class="empty">Todavía no hay movimientos registrados${f !== "todo" ? " de este tipo" : ""}.</div>`}
     <button class="btn block" data-act="close" style="margin-top:10px">Cerrar</button>`);
 }
@@ -2766,6 +2807,9 @@ document.addEventListener("click", async e => {
     case "invp": invProduct(id); break;
     case "entrada": entradaModal(id || null); break;
     case "entpick": entradaModal(id); break;
+    case "salida": salidaModal(id || null); break;
+    case "salmot": st._salMot = id; document.querySelectorAll("#sal_m button").forEach(b => b.classList.toggle("on", b.dataset.id === id)); break;
+    case "salsave": saveSalida(id); break;
     case "entq": { const i = $("#ent_q"); i.value = digits(i.value) + Number(id); break; }
     case "entsave": { const [pid, mode] = id.split("|"); saveEntrada(pid, mode === "more"); break; }
     case "ajuste": ajusteModal(id); break;
