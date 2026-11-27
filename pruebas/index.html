@@ -1532,7 +1532,7 @@ function entradaModal(pid) {
   }
 }
 /* ---------- salida de inventario (sin venta) ---------- */
-const SALIDA_MOT = ["Consumo personal", "Insumo michelada", "Cortesía", "Daño", "Vencido"];
+const SALIDA_MOT = ["Consumo personal", "Insumo michelada", "Cortesía", "Daño", "Vencido", "Cambio a proveedor"];
 function salidaModal(pid) {
   if (!canCaja()) return;
   const p = pid ? prodById(pid) : null;
